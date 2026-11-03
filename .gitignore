@@ -1,0 +1,38 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Environment & Secrets (STRICTLY IGNORED)
+.env
+.env.*
+.env.local
+.env.production
+!.env.example
+
+# Logs
+log/
+/log
+*.log
+
+# IDE & Editor files
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary & Vendor
+vendor/
+tmp/
+/Godeps/
