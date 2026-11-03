@@ -24,6 +24,11 @@ const (
 
 	// Khóa Cache cho Ca trực thu ngân
 	KeyCurrentShift = "shop:shift:current" // Ca trực hiện tại đang mở
+
+	// Khóa Cache cho Xác thực & Token Blacklist (ECDSA JTI & Refresh Token Rotation)
+	KeySessionRefreshTokenPrefix   = "auth:session:refresh:"   // auth:session:refresh:<token> -> session data
+	KeyBlacklistRefreshTokenPrefix = "auth:blacklist:refresh:" // auth:blacklist:refresh:<token> -> rotated/revoked
+	KeyBlacklistJTIPrefix          = "auth:blacklist:jti:"     // auth:blacklist:jti:<jti> -> revoked access token
 )
 
 // CacheAside triển khai mô hình Cache-Aside tiêu chuẩn:

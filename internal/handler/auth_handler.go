@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"member-shop-api/internal/config"
 	"member-shop-api/internal/dto"
 	"member-shop-api/internal/model"
 	"member-shop-api/internal/repository"
@@ -8,6 +9,7 @@ import (
 	"member-shop-api/pkg/apperror"
 	"member-shop-api/pkg/response"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -16,10 +18,41 @@ import (
 type AuthHandler struct {
 	authService services.AuthService
 	staffRepo   repository.StaffRepository
+	cfg         *config.Config
 }
 
-func NewAuthHandler(authService services.AuthService, staffRepo repository.StaffRepository) *AuthHandler {
-	return &AuthHandler{authService: authService, staffRepo: staffRepo}
+func NewAuthHandler(authService services.AuthService, staffRepo repository.StaffRepository, cfg *config.Config) *AuthHandler {
+	return &AuthHandler{authService: authService, staffRepo: staffRepo, cfg: cfg}
+}
+
+// setRefreshTokenCookie thiết lập cookie HTTP-Only cho Refresh Token bảo mật chống XSS
+func (h *AuthHandler) setRefreshTokenCookie(c *gin.Context, token string) {
+	secure := h.cfg.AppEnv == "production"
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(
+		"refresh_token",
+		token,
+		h.cfg.RefreshTokenExpires,
+		"/",
+		"",
+		secure,
+		true, // HttpOnly: JavaScript client không thể đọc, chống rò rỉ XSS
+	)
+}
+
+// clearRefreshTokenCookie xóa cookie Refresh Token khi đăng xuất
+func (h *AuthHandler) clearRefreshTokenCookie(c *gin.Context) {
+	secure := h.cfg.AppEnv == "production"
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(
+		"refresh_token",
+		"",
+		-1,
+		"/",
+		"",
+		secure,
+		true,
+	)
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {
@@ -29,13 +62,75 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	res, err := h.authService.Login(c.Request.Context(), req)
+	res, refreshToken, err := h.authService.Login(c.Request.Context(), req)
 	if err != nil {
 		response.HandleError(c, err)
 		return
 	}
 
+	// Thiết lập Refresh Token an toàn trong HTTP-Only Cookie thay vì trả về body
+	h.setRefreshTokenCookie(c, refreshToken)
+
 	response.SuccessWithMsg(c, "Đăng nhập thành công", res)
+}
+
+func (h *AuthHandler) RefreshToken(c *gin.Context) {
+	// 1. Đọc Refresh Token ưu tiên từ HTTP-Only Cookie
+	refreshToken, err := c.Cookie("refresh_token")
+	if err != nil || strings.TrimSpace(refreshToken) == "" {
+		// Fallback kiểm tra header X-Refresh-Token hoặc JSON body cho các client API (Postman / mobile client)
+		refreshToken = c.GetHeader("X-Refresh-Token")
+		if refreshToken == "" {
+			var body struct {
+				RefreshToken string `json:"refreshToken"`
+			}
+			_ = c.ShouldBindJSON(&body)
+			refreshToken = body.RefreshToken
+		}
+	}
+
+	if strings.TrimSpace(refreshToken) == "" {
+		response.FailWithStatus(c, http.StatusUnauthorized, apperror.CodeUnauthorized, "Yêu cầu cung cấp Refresh Token trong cookie")
+		return
+	}
+
+	// 2. Thực hiện làm mới token (Token Rotation: Xóa token cũ, thêm vào blacklist, cấp cặp token mới)
+	res, newRefreshToken, err := h.authService.RefreshToken(c.Request.Context(), refreshToken)
+	if err != nil {
+		response.HandleError(c, err)
+		return
+	}
+
+	// 3. Cập nhật Refresh Token mới vào HTTP-Only Cookie
+	h.setRefreshTokenCookie(c, newRefreshToken)
+
+	response.SuccessWithMsg(c, "Làm mới Access Token thành công", res)
+}
+
+func (h *AuthHandler) Logout(c *gin.Context) {
+	// Lấy Access Token từ header
+	authHeader := c.GetHeader("Authorization")
+	var accessToken string
+	if authHeader != "" {
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
+			accessToken = parts[1]
+		}
+	}
+
+	// Lấy Refresh Token từ cookie
+	refreshToken, _ := c.Cookie("refresh_token")
+	if refreshToken == "" {
+		refreshToken = c.GetHeader("X-Refresh-Token")
+	}
+
+	// Thu hồi Access Token (đưa jti vào Blacklist) và thu hồi Refresh Token
+	_ = h.authService.Logout(c.Request.Context(), accessToken, refreshToken)
+
+	// Xóa cookie Refresh Token trên trình duyệt
+	h.clearRefreshTokenCookie(c)
+
+	response.SuccessWithMsg(c, "Đăng xuất thành công", nil)
 }
 
 func (h *AuthHandler) GetMe(c *gin.Context) {

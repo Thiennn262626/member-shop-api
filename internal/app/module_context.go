@@ -2,6 +2,7 @@ package app
 
 import (
 	"member-shop-api/internal/config"
+	"member-shop-api/internal/middlewares"
 	"member-shop-api/internal/repository"
 	"member-shop-api/internal/services"
 	"member-shop-api/pkg/cache"
@@ -40,19 +41,38 @@ func NewModuleContext(
 	engine *gin.Engine,
 	sseHub *services.SSEHub,
 ) *ModuleContext {
+	staffRepo := repository.NewStaffRepository(db)
+	configRepo := repository.NewConfigRepository(db)
+	custRepo := repository.NewCustomerRepository(db)
+	pointTxRepo := repository.NewPointTransactionRepository(db)
+	productRepo := repository.NewProductRepository(db)
+	voucherRepo := repository.NewVoucherRepository(db)
+	shiftRepo := repository.NewShiftRepository(db)
+	orderRepo := repository.NewOrderRepository(db)
+
+	authSvc := services.NewAuthService(cfg, staffRepo, rdb)
+	orderSvc := services.NewOrderService(
+		orderRepo, custRepo, productRepo, voucherRepo, shiftRepo, configRepo, pointTxRepo, sseHub, rdb,
+	)
+
+	// Khởi tạo Middleware Auth với ECDSA Key Manager và Cache Blacklist
+	middlewares.InitAuthMiddleware(authSvc.GetKeyManager(), rdb)
+
 	return &ModuleContext{
 		Config:      cfg,
 		DB:          db,
 		Redis:       rdb,
 		Engine:      engine,
 		SSEHub:      sseHub,
-		StaffRepo:   repository.NewStaffRepository(db),
-		ConfigRepo:  repository.NewConfigRepository(db),
-		CustRepo:    repository.NewCustomerRepository(db),
-		PointTxRepo: repository.NewPointTransactionRepository(db),
-		ProductRepo: repository.NewProductRepository(db),
-		VoucherRepo: repository.NewVoucherRepository(db),
-		ShiftRepo:   repository.NewShiftRepository(db),
-		OrderRepo:   repository.NewOrderRepository(db),
+		StaffRepo:   staffRepo,
+		ConfigRepo:  configRepo,
+		CustRepo:    custRepo,
+		PointTxRepo: pointTxRepo,
+		ProductRepo: productRepo,
+		VoucherRepo: voucherRepo,
+		ShiftRepo:   shiftRepo,
+		OrderRepo:   orderRepo,
+		OrderSvc:    orderSvc,
+		AuthSvc:     authSvc,
 	}
 }

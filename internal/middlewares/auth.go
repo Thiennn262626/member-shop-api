@@ -1,16 +1,27 @@
 package middlewares
 
 import (
-	"fmt"
 	"member-shop-api/internal/config"
 	"member-shop-api/pkg/apperror"
+	"member-shop-api/pkg/authjwt"
+	"member-shop-api/pkg/cache"
 	"member-shop-api/pkg/response"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 )
+
+var (
+	authKM    *authjwt.ECDSAKeyManager
+	authCache cache.RedisCacheService
+)
+
+// InitAuthMiddleware thiết lập ECDSA Key Manager và Cache Service để kiểm tra chữ ký và blacklist
+func InitAuthMiddleware(km *authjwt.ECDSAKeyManager, cacheSvc cache.RedisCacheService) {
+	authKM = km
+	authCache = cacheSvc
+}
 
 func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -28,30 +39,41 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		tokenStr := parts[1]
-		token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (any, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		tokenStr := strings.TrimSpace(parts[1])
+
+		// 1. Xác thực bằng chữ ký ECDSA ES256
+		if authKM == nil {
+			response.FailWithStatus(c, http.StatusInternalServerError, apperror.CodeInternalServerError, "Hệ thống xác thực chưa được khởi tạo")
+			c.Abort()
+			return
+		}
+
+		claims, err := authKM.ValidateAccessToken(tokenStr)
+		if err != nil {
+			response.FailWithStatus(c, http.StatusUnauthorized, apperror.CodeAuthTokenInvalid, "Token xác thực ECDSA không hợp lệ hoặc đã hết hạn")
+			c.Abort()
+			return
+		}
+
+		// 2. Kiểm tra mã jti của Access Token trong Blacklist (Thu hồi khi Đăng xuất)
+		if authCache != nil && claims.JTI != "" {
+			jtiKey := cache.KeyBlacklistJTIPrefix + claims.JTI
+			isRevoked, _ := authCache.Exists(c.Request.Context(), jtiKey)
+			if isRevoked {
+				response.FailWithStatus(c, http.StatusUnauthorized, apperror.CodeAuthTokenInvalid, "Token này đã bị thu hồi hoặc đã đăng xuất")
+				c.Abort()
+				return
 			}
-			return []byte(cfg.JWTAccessSecret), nil
-		})
-
-		if err != nil || !token.Valid {
-			response.FailWithStatus(c, http.StatusUnauthorized, apperror.CodeAuthTokenInvalid, "Token xác thực không hợp lệ hoặc đã hết hạn")
-			c.Abort()
-			return
 		}
 
-		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
-			response.FailWithStatus(c, http.StatusUnauthorized, apperror.CodeAuthTokenInvalid, "Claims trong token không hợp lệ")
-			c.Abort()
-			return
-		}
+		// 3. Gắn thông tin người dùng vào Context cho các Handler phía sau
+		c.Set("userId", claims.UserID)
+		c.Set("role", claims.Role)
+		c.Set("username", claims.Username)
+		c.Set("name", claims.Name)
+		c.Set("jti", claims.JTI)
+		c.Set("accessToken", tokenStr)
 
-		c.Set("userId", claims["sub"])
-		c.Set("role", claims["role"])
-		c.Set("username", claims["username"])
 		c.Next()
 	}
 }

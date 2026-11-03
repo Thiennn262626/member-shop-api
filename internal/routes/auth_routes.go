@@ -18,8 +18,10 @@ func NewAuthRoute(h *handler.AuthHandler, cfg *config.Config) *AuthRoute {
 }
 
 func (r *AuthRoute) Register(v1 *gin.RouterGroup, admin *gin.RouterGroup) {
-	// Public
+	// Public Auth endpoints
 	v1.POST("/auth/login", r.handler.Login)
+	v1.POST("/auth/refresh", r.handler.RefreshToken)
+	v1.POST("/auth/logout", r.handler.Logout)
 
 	// Protected Auth
 	v1.GET("/auth/me", middlewares.AuthMiddleware(r.cfg), r.handler.GetMe)

@@ -18,10 +18,13 @@ type AuthModule struct {
 }
 
 func NewAuthModule(mc *ModuleContext) Module {
-	authSvc := services.NewAuthService(mc.Config, mc.StaffRepo)
-	mc.AuthSvc = authSvc
+	authSvc := mc.AuthSvc
+	if authSvc == nil {
+		authSvc = services.NewAuthService(mc.Config, mc.StaffRepo, mc.Redis)
+		mc.AuthSvc = authSvc
+	}
 
-	h := handler.NewAuthHandler(authSvc, mc.StaffRepo)
+	h := handler.NewAuthHandler(authSvc, mc.StaffRepo, mc.Config)
 	seedDefaultAdmin(mc.StaffRepo)
 
 	return &AuthModule{
