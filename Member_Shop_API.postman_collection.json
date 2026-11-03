@@ -1,0 +1,1099 @@
+{
+  "info": {
+    "_postman_id": "8f3e5b61-9c87-41ab-8e0b-21d3f9b2d88c",
+    "name": "Member Shop API (Bake & Sip)",
+    "description": "Bộ sưu tập Postman hoàn chỉnh để kiểm thử toàn bộ hệ thống API Backend Member Shop (Bake & Sip).\n- Framework: Golang 1.24 + Gin-Gonic + MongoDB + SSE\n- Tự động lưu Bearer Token sau khi gọi API Login.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8088",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "productId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "orderId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "shiftId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "workShiftId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "customerId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "voucherId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "staffId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Authentication & Staff",
+      "item": [
+        {
+          "name": "1.1. Login (Admin / Thu Ngân)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var json = pm.response.json();",
+                  "    if (json.accessToken) {",
+                  "        pm.collectionVariables.set(\"token\", json.accessToken);",
+                  "        console.log(\"Saved JWT Access Token:\", json.accessToken);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"pin\": \"1234\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "auth", "login"]
+            },
+            "description": "Đăng nhập tài khoản bằng Username & mã PIN. Sau khi đăng nhập thành công, token sẽ tự động lưu vào biến {{token}}."
+          }
+        },
+        {
+          "name": "1.2. Get Current User Info (/auth/me)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "auth", "me"]
+            },
+            "description": "Lấy thông tin tài khoản đang đăng nhập từ JWT Token."
+          }
+        },
+        {
+          "name": "1.3. Get All Staff Accounts (Owner)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/staff",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "staff"]
+            },
+            "description": "Chỉ dành cho Owner: Lấy danh sách toàn bộ tài khoản nhân viên."
+          }
+        },
+        {
+          "name": "1.4. Create New Staff Account (Owner)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"thungan1\",\n  \"name\": \"Trần Thị Thu Ngân\",\n  \"role\": \"cashier\",\n  \"phone\": \"0912345678\",\n  \"shift\": \"Ca Sáng (06:30 - 14:30)\",\n  \"hourlyRate\": 28000,\n  \"pin\": \"1234\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/staff",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "staff"]
+            }
+          }
+        },
+        {
+          "name": "1.5. Update Staff Account (Owner)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Trần Thị Thu Ngân (Cập nhật)\",\n  \"hourlyRate\": 30000,\n  \"phone\": \"0988776655\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/staff/{{staffId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "staff", "{{staffId}}"]
+            }
+          }
+        },
+        {
+          "name": "1.6. Toggle Staff Active Status (Owner)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/staff/{{staffId}}/toggle",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "staff", "{{staffId}}", "toggle"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Web Storefront (Public API)",
+      "item": [
+        {
+          "name": "2.1. Get Storefront Menu Products",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/products?all=false",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "products"],
+              "query": [
+                {
+                  "key": "all",
+                  "value": "false",
+                  "description": "false: chỉ lấy món đang bật bán (isActive=true)"
+                }
+              ]
+            },
+            "description": "Lấy danh sách các món bánh & nước đang mở bán ngoài trang chủ."
+          }
+        },
+        {
+          "name": "2.2. Get Product Detail with Options",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/products/{{productId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "products", "{{productId}}"]
+            }
+          }
+        },
+        {
+          "name": "2.3. Get Shop Config & Delivery Policy",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/config",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "config"]
+            },
+            "description": "Lấy thông tin tiệm, tỷ lệ đổi điểm, mốc tính ship đồng giá và tài khoản VietQR."
+          }
+        },
+        {
+          "name": "2.4. Validate Voucher Code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"BAKESIP10\",\n  \"subTotal\": 150000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/vouchers/validate",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "vouchers", "validate"]
+            },
+            "description": "Kiểm tra tính hợp lệ của mã giảm giá và tính toán số tiền giảm trực tiếp từ backend."
+          }
+        },
+        {
+          "name": "2.5. Lookup Membership Card by Phone",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/customers/lookup?phone=0988111222",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "customers", "lookup"],
+              "query": [
+                {
+                  "key": "phone",
+                  "value": "0988111222"
+                }
+              ]
+            },
+            "description": "Khách hàng tra cứu điểm tích lũy, số điểm khả dụng, hạng thẻ và lịch sử giao dịch điểm."
+          }
+        },
+        {
+          "name": "2.6. Track Order Status (By Phone or Code)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/orders/track?phone=0988111222",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "orders", "track"],
+              "query": [
+                {
+                  "key": "phone",
+                  "value": "0988111222"
+                },
+                {
+                  "key": "code",
+                  "value": "#BS-8924",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Theo dõi tiến độ đơn hàng thời gian thực (4 bước: Đơn tạm -> Đang làm bánh -> Đang giao -> Hoàn tất)."
+          }
+        },
+        {
+          "name": "2.7. Create Web Order (Khách Chốt Đơn)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var json = pm.response.json();",
+                  "    if (json.order && json.order.id) {",
+                  "        pm.collectionVariables.set(\"orderId\", json.order.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerName\": \"Linh Chi\",\n  \"customerPhone\": \"0988111222\",\n  \"items\": [\n    {\n      \"productId\": \"672722b51234567890abcdef\",\n      \"productName\": \"Bánh Sừng Bò Trứng Muối Hoàng Kim\",\n      \"unitPrice\": 38000,\n      \"quantity\": 2,\n      \"optionsSummary\": \"Nóng giòn\",\n      \"itemNote\": \"Nướng xém cạnh giúp em\",\n      \"isRedeemedWithPoints\": false\n    },\n    {\n      \"productId\": \"672722b51234567890abcdeg\",\n      \"productName\": \"Bánh Tart Trứng Than Caramel\",\n      \"unitPrice\": 25000,\n      \"quantity\": 1,\n      \"isRedeemedWithPoints\": true,\n      \"pointsCost\": 25\n    }\n  ],\n  \"note\": \"Giao trước cổng toà nhà\",\n  \"fulfillmentType\": \"delivery\",\n  \"deliveryAddress\": \"123 Phan Xích Long, P.2, Phú Nhuận\",\n  \"deliveryTimeType\": \"asap\",\n  \"voucherCode\": \"BAKESIP10\",\n  \"discountPointsUsed\": 10,\n  \"totalPointsRedeemedItems\": 25\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "orders"]
+            },
+            "description": "Tạo đơn hàng tạm từ Web. Backend tự tính lại đơn giá, áp voucher, trừ điểm và tính ship an toàn."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. POS & Order Management",
+      "item": [
+        {
+          "name": "3.1. Create POS Order (Bán Tại Quầy / Lên Đơn Giao)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerName\": \"Khách Vãng Lai\",\n  \"customerPhone\": \"0977333444\",\n  \"items\": [\n    {\n      \"productId\": \"672722b51234567890abcdef\",\n      \"productName\": \"Trà Sữa Ô Long Nướng Trân Châu Dẻo\",\n      \"unitPrice\": 39000,\n      \"quantity\": 2,\n      \"optionsSummary\": \"Size L • 50% Đường • Ít Đá\"\n    }\n  ],\n  \"paymentMethod\": \"cash\",\n  \"status\": \"completed\",\n  \"paymentStatus\": \"paid\",\n  \"fulfillmentType\": \"pickup\",\n  \"discountPointsUsed\": 0\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/pos/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "pos", "orders"]
+            },
+            "description": "Thu ngân lên đơn tại quầy POS. Khi status = completed & paid, hệ thống tự động tích điểm cho khách và ghi nhận vào ca trực."
+          }
+        },
+        {
+          "name": "3.2. Get Orders List (Admin/POS)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/orders?limit=20&offset=0&status=pending",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "orders"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "status",
+                  "value": "pending",
+                  "description": "ALL, pending, confirmed, shipping, completed, cancelled"
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "phone",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "3.3. Get Order Detail by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/orders/{{orderId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "orders", "{{orderId}}"]
+            }
+          }
+        },
+        {
+          "name": "3.4. Update Order Status & Shipper Info",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"completed\",\n  \"paymentStatus\": \"paid\",\n  \"shipperInfo\": \"Anh Hùng Grab (0908123456)\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/orders/{{orderId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "orders", "{{orderId}}", "status"]
+            },
+            "description": "Cập nhật tiến trình đơn: pending -> confirmed -> shipping -> completed. Khi sang completed, hệ thống tự động cộng điểm cho khách."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Shifts & Cash Drawer (Giao Ca & Chốt Két)",
+      "item": [
+        {
+          "name": "4.1. Get Current Open Shift",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/shifts/current",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "shifts", "current"]
+            },
+            "description": "Lấy thông tin ca làm việc hiện đang mở (quỹ đầu ca, tổng tiền mặt, QR, doanh thu)."
+          }
+        },
+        {
+          "name": "4.2. Open New Shift (Mở Ca / Nhập Tiền Lẻ Đầu Ca)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var json = pm.response.json();",
+                  "    if (json.id) {",
+                  "        pm.collectionVariables.set(\"shiftId\", json.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"shiftName\": \"Ca Sáng (06:30 - 14:30)\",\n  \"initialFloat\": 500000,\n  \"notes\": \"Bỏ két 500k tiền thối lẻ đầu ca\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/shifts/open",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "shifts", "open"]
+            }
+          }
+        },
+        {
+          "name": "4.3. Close Shift & Reconcile Cash (Chốt Két Kết Ca)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"actualCash\": 2350000,\n  \"notes\": \"Bàn giao ca đầy đủ, tiền két khớp 100%\",\n  \"nextStaffName\": \"Lê Hoàng Yến (Ca Chiều)\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/shifts/{{shiftId}}/close",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "shifts", "{{shiftId}}", "close"]
+            },
+            "description": "Nhập số tiền mặt thực tế đếm được trong két. Hệ thống tự so sánh với expectedCash và tính difference thừa/thiếu."
+          }
+        },
+        {
+          "name": "4.4. Get Shift History (Owner)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/shifts/history?limit=20&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "shifts", "history"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Work Shifts & Payroll (Lịch Làm & Bảng Lương)",
+      "item": [
+        {
+          "name": "5.1. Get Work Shifts by Month (Lịch Ca)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/work-shifts?month=2026-03",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "work-shifts"],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "2026-03"
+                },
+                {
+                  "key": "staffId",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Load danh sách các ca làm việc trong tháng để vẽ lên tờ lịch làm việc."
+          }
+        },
+        {
+          "name": "5.2. Save Monthly Roster Schedule (Owner Phân Ca)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"staffId\": \"{{staffId}}\",\n  \"month\": \"2026-03\",\n  \"assignments\": [\n    {\n      \"date\": \"2026-03-26\",\n      \"shiftType\": \"morning\",\n      \"notes\": \"Trực quầy chính ca sáng\"\n    },\n    {\n      \"date\": \"2026-03-27\",\n      \"shiftType\": \"afternoon\",\n      \"notes\": \"Trực quầy chính ca chiều\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/work-shifts/roster",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "work-shifts", "roster"]
+            }
+          }
+        },
+        {
+          "name": "5.3. Check-in Work Shift (Thu Ngân Điểm Danh)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/work-shifts/{{workShiftId}}/check-in",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "work-shifts", "{{workShiftId}}", "check-in"]
+            }
+          }
+        },
+        {
+          "name": "5.4. Confirm Attendance & Actual Hours (Chốt Công Cuối Ngày)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"actualHours\": 8.0,\n  \"status\": \"completed\",\n  \"notes\": \"Hoàn tất ca làm việc đầy đủ 8.0 giờ\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/work-shifts/{{workShiftId}}/attendance",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "work-shifts", "{{workShiftId}}", "attendance"]
+            }
+          }
+        },
+        {
+          "name": "5.5. Get Monthly Payroll Summary (Owner)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/payroll?month=2026-03",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "payroll"],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "2026-03"
+                }
+              ]
+            },
+            "description": "Lấy bảng tổng hợp công, số giờ thực tế, lương theo giờ và thực nhận của toàn bộ nhân viên."
+          }
+        },
+        {
+          "name": "5.6. Adjust Payroll Allowance/Deduction (Owner Thưởng/Phạt)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"allowance\": 300000,\n  \"deduction\": 50000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/payroll/adjust/{{staffId}}?month=2026-03",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "payroll", "adjust", "{{staffId}}"],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "2026-03"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "5.7. Finalize Monthly Payroll (Owner Chốt Lương Tháng)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/payroll/finalize?month=2026-03",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "payroll", "finalize"],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "2026-03"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Product & Stock Management",
+      "item": [
+        {
+          "name": "6.1. Fast Toggle Product Status (Hết Hàng / Còn Hàng)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/products/{{productId}}/toggle",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "products", "{{productId}}", "toggle"]
+            }
+          }
+        },
+        {
+          "name": "6.2. Fast Toggle Specific Option Availability (Topping Hết Hàng)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isAvailable\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/stock/options/opt-topping-pearl",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "stock", "options", "opt-topping-pearl"]
+            },
+            "description": "Tắt tình trạng còn hàng của 1 tùy chọn/topping, tự động đồng bộ sang tất cả các món đang dùng tùy chọn đó."
+          }
+        },
+        {
+          "name": "6.3. Toggle All Products in Category (Owner)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": true,\n  \"category\": \"Tất cả\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/stock/toggle-all",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "stock", "toggle-all"]
+            }
+          }
+        },
+        {
+          "name": "6.4. Create New Product (Owner)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bánh Croissant Bơ Pháp Nóng Hổi\",\n  \"category\": \"Bánh Mì & Mặn\",\n  \"description\": \"Vỏ bánh ngàn lớp giòn tan thơm lừng bơ Pháp cao cấp nướng mới mỗi sáng.\",\n  \"price\": 35000,\n  \"fakePrice\": 40000,\n  \"allowPointRedemption\": true,\n  \"pointsRequiredToRedeem\": 35,\n  \"imageUrl\": \"https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=500\",\n  \"isActive\": true,\n  \"unit\": \"Cái\",\n  \"tag\": \"Mới Ra Lò 🥐\",\n  \"rating\": 5.0,\n  \"soldCount\": 0,\n  \"optionGroups\": [\n    {\n      \"id\": \"opt-grp-temp\",\n      \"name\": \"Nhiệt độ phục vụ\",\n      \"required\": true,\n      \"selection\": \"only\",\n      \"options\": [\n        {\n          \"id\": \"opt-temp-hot\",\n          \"name\": \"Nướng nóng giòn tại lò\",\n          \"price\": 0,\n          \"isDefault\": true,\n          \"isAvailable\": true\n        },\n        {\n          \"id\": \"opt-temp-normal\",\n          \"name\": \"Nhiệt độ phòng (Giao đi)\",\n          \"price\": 0,\n          \"isDefault\": false,\n          \"isAvailable\": true\n        }\n      ]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/products",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "products"]
+            }
+          }
+        },
+        {
+          "name": "6.5. Update Product (Owner)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bánh Croissant Bơ Pháp Nóng Hổi (Đổi giá)\",\n  \"price\": 38000,\n  \"pointsRequiredToRedeem\": 38\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/products/{{productId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "products", "{{productId}}"]
+            }
+          }
+        },
+        {
+          "name": "6.6. Delete Product (Owner)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/products/{{productId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "products", "{{productId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Vouchers (Mã Giảm Giá)",
+      "item": [
+        {
+          "name": "7.1. Get All Vouchers (Owner)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/vouchers",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "vouchers"]
+            }
+          }
+        },
+        {
+          "name": "7.2. Create Voucher (Owner)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"BANHNGON20K\",\n  \"title\": \"Giảm 20k cho đơn từ 100k\",\n  \"discountType\": \"fixed\",\n  \"discountValue\": 20000,\n  \"minOrderValue\": 100000,\n  \"startDate\": \"2026-01-01T00:00:00Z\",\n  \"endDate\": \"2026-12-31T23:59:59Z\",\n  \"usageLimit\": 200,\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/vouchers",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "vouchers"]
+            }
+          }
+        },
+        {
+          "name": "7.3. Update Voucher (Owner)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Giảm 20k cho đơn từ 120k\",\n  \"minOrderValue\": 120000,\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/vouchers/{{voucherId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "vouchers", "{{voucherId}}"]
+            }
+          }
+        },
+        {
+          "name": "7.4. Delete Voucher (Owner)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/vouchers/{{voucherId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "vouchers", "{{voucherId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Customers & Loyalty Points",
+      "item": [
+        {
+          "name": "8.1. Get Customers List (Owner)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/customers",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "customers"]
+            }
+          }
+        },
+        {
+          "name": "8.2. Adjust Customer Points Manually (Owner)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pointsDelta\": 50,\n  \"note\": \"Thưởng sinh nhật khách hàng thân thiết\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/customers/{{customerId}}/adjust-points",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "customers", "{{customerId}}", "adjust-points"]
+            },
+            "description": "Cộng (+) hoặc trừ (-) điểm thủ công. Tự động ghi nhận vào sổ giao dịch point_transactions."
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Store Config & Settings",
+      "item": [
+        {
+          "name": "9.1. Update Shop Config (Owner)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"shopName\": \"Bake & Sip\",\n  \"hotline\": \"0901 234 567\",\n  \"pointToVndRatio\": 1000,\n  \"spendToPointRatio\": 10000,\n  \"isOpen\": true,\n  \"bank\": {\n    \"bankName\": \"MBBank (Ngân Hàng Quân Đội)\",\n    \"accountNumber\": \"0901234567\",\n    \"accountHolder\": \"TIEM BANH BAKE AND SIP\"\n  },\n  \"delivery\": {\n    \"enabled\": true,\n    \"maxDistanceKm\": 10,\n    \"areaNote\": \"Chỉ nhận giao hàng trong bán kính 10km\",\n    \"tiers\": [\n      {\n        \"id\": \"tier-1\",\n        \"minOrder\": 0,\n        \"maxOrder\": 99999,\n        \"fee\": 20000,\n        \"label\": \"Đơn dưới 100.000đ (Phí ship 20k)\"\n      },\n      {\n        \"id\": \"tier-2\",\n        \"minOrder\": 100000,\n        \"maxOrder\": 199999,\n        \"fee\": 10000,\n        \"label\": \"Đơn từ 100k - 199k (Phí ship 10k)\"\n      },\n      {\n        \"id\": \"tier-3\",\n        \"minOrder\": 200000,\n        \"fee\": 0,\n        \"label\": \"Đơn từ 200k trở lên (Freeship)\"\n      }\n    ]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/config",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "config"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Realtime SSE Stream",
+      "item": [
+        {
+          "name": "10.1. Connect Server-Sent Events Stream",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/sse/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "sse", "events"]
+            },
+            "description": "Kết nối luồng SSE để nhận thông báo tức thời (Đơn mới, Chuyển trạng thái đơn, Bật/tắt món)."
+          }
+        }
+      ]
+    }
+  ]
+}
