@@ -7,6 +7,7 @@ import (
 	"member-shop-api/internal/model"
 	"member-shop-api/internal/repository"
 	"member-shop-api/pkg/apperror"
+	"member-shop-api/pkg/cache"
 	"member-shop-api/pkg/response"
 	"net/http"
 	"strconv"
@@ -17,15 +18,19 @@ import (
 )
 
 type ShiftHandler struct {
-	repo repository.ShiftRepository
+	repo  repository.ShiftRepository
+	cache cache.RedisCacheService
 }
 
-func NewShiftHandler(repo repository.ShiftRepository) *ShiftHandler {
-	return &ShiftHandler{repo: repo}
+func NewShiftHandler(repo repository.ShiftRepository, cacheSvc cache.RedisCacheService) *ShiftHandler {
+	return &ShiftHandler{repo: repo, cache: cacheSvc}
 }
 
 func (h *ShiftHandler) GetCurrentShift(c *gin.Context) {
-	shift, err := h.repo.GetCurrentOpenShift(c.Request.Context())
+	// Cache-Aside: Ca trực hiện tại đang mở (TTL: 2 phút)
+	shift, err := cache.CacheAside(c.Request.Context(), h.cache, cache.KeyCurrentShift, 2*time.Minute, func() (*model.CashShift, error) {
+		return h.repo.GetCurrentOpenShift(c.Request.Context())
+	})
 	if err != nil {
 		response.HandleError(c, err)
 		return
@@ -69,6 +74,10 @@ func (h *ShiftHandler) OpenShift(c *gin.Context) {
 		response.HandleError(c, err)
 		return
 	}
+
+	// Invalidate Cache ca trực hiện tại
+	cache.Invalidate(c.Request.Context(), h.cache, cache.KeyCurrentShift)
+
 	response.CreatedWithMsg(c, "Mở ca thu ngân thành công", newShift)
 }
 
@@ -91,6 +100,10 @@ func (h *ShiftHandler) CloseShift(c *gin.Context) {
 		response.HandleError(c, err)
 		return
 	}
+
+	// Invalidate Cache ca trực hiện tại
+	cache.Invalidate(c.Request.Context(), h.cache, cache.KeyCurrentShift)
+
 	response.SuccessWithMsg(c, "Kết ca và chốt két thành công", closed)
 }
 

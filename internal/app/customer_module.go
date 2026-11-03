@@ -12,7 +12,7 @@ type CustomerModule struct {
 }
 
 func NewCustomerModule(mc *ModuleContext) Module {
-	h := handler.NewCustomerHandler(mc.CustRepo, mc.PointTxRepo)
+	h := handler.NewCustomerHandler(mc.CustRepo, mc.PointTxRepo, mc.Redis)
 	return &CustomerModule{
 		handler: h,
 		cfg:     mc.Config,

@@ -5,6 +5,7 @@ import (
 	"member-shop-api/internal/model"
 	"member-shop-api/internal/repository"
 	"member-shop-api/pkg/apperror"
+	"member-shop-api/pkg/cache"
 	"member-shop-api/pkg/response"
 	"net/http"
 	"time"
@@ -14,11 +15,12 @@ import (
 )
 
 type VoucherHandler struct {
-	repo repository.VoucherRepository
+	repo  repository.VoucherRepository
+	cache cache.RedisCacheService
 }
 
-func NewVoucherHandler(repo repository.VoucherRepository) *VoucherHandler {
-	return &VoucherHandler{repo: repo}
+func NewVoucherHandler(repo repository.VoucherRepository, cacheSvc cache.RedisCacheService) *VoucherHandler {
+	return &VoucherHandler{repo: repo, cache: cacheSvc}
 }
 
 func (h *VoucherHandler) ValidateVoucher(c *gin.Context) {
@@ -28,7 +30,11 @@ func (h *VoucherHandler) ValidateVoucher(c *gin.Context) {
 		return
 	}
 
-	v, err := h.repo.GetByCode(c.Request.Context(), req.Code)
+	// Cache-Aside: Đọc voucher từ Cache (TTL: 10 phút)
+	vKey := cache.KeyVoucherPrefix + req.Code
+	v, err := cache.CacheAside(c.Request.Context(), h.cache, vKey, 10*time.Minute, func() (*model.Voucher, error) {
+		return h.repo.GetByCode(c.Request.Context(), req.Code)
+	})
 	if err != nil {
 		response.HandleError(c, err)
 		return
@@ -89,7 +95,10 @@ func (h *VoucherHandler) ValidateVoucher(c *gin.Context) {
 }
 
 func (h *VoucherHandler) GetAll(c *gin.Context) {
-	list, err := h.repo.GetAll(c.Request.Context())
+	// Cache-Aside: Danh sách voucher (TTL: 10 phút)
+	list, err := cache.CacheAside(c.Request.Context(), h.cache, cache.KeyVouchersAll, 10*time.Minute, func() ([]model.Voucher, error) {
+		return h.repo.GetAll(c.Request.Context())
+	})
 	if err != nil {
 		response.HandleError(c, err)
 		return
@@ -108,6 +117,10 @@ func (h *VoucherHandler) Create(c *gin.Context) {
 		response.HandleError(c, err)
 		return
 	}
+
+	// Invalidate Cache liên quan đến voucher
+	cache.InvalidatePattern(c.Request.Context(), h.cache, cache.PatternVouchers)
+
 	response.CreatedWithMsg(c, "Tạo mã giảm giá mới thành công", v)
 }
 
@@ -133,6 +146,10 @@ func (h *VoucherHandler) Update(c *gin.Context) {
 		response.HandleError(c, err)
 		return
 	}
+
+	// Invalidate Cache liên quan đến voucher
+	cache.InvalidatePattern(c.Request.Context(), h.cache, cache.PatternVouchers)
+
 	response.SuccessWithMsg(c, "Cập nhật mã giảm giá thành công", updated)
 }
 
@@ -148,5 +165,9 @@ func (h *VoucherHandler) Delete(c *gin.Context) {
 		response.HandleError(c, err)
 		return
 	}
+
+	// Invalidate Cache liên quan đến voucher
+	cache.InvalidatePattern(c.Request.Context(), h.cache, cache.PatternVouchers)
+
 	response.SuccessWithMsg(c, "Xóa mã giảm giá thành công", nil)
 }

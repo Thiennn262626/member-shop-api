@@ -3,12 +3,15 @@ package handler
 import (
 	"math"
 	"member-shop-api/internal/dto"
+	"member-shop-api/internal/model"
 	"member-shop-api/internal/repository"
 	"member-shop-api/internal/services"
 	"member-shop-api/pkg/apperror"
+	"member-shop-api/pkg/cache"
 	"member-shop-api/pkg/response"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -17,10 +20,11 @@ import (
 type OrderHandler struct {
 	orderService services.OrderService
 	orderRepo    repository.OrderRepository
+	cache        cache.RedisCacheService
 }
 
-func NewOrderHandler(orderService services.OrderService, orderRepo repository.OrderRepository) *OrderHandler {
-	return &OrderHandler{orderService: orderService, orderRepo: orderRepo}
+func NewOrderHandler(orderService services.OrderService, orderRepo repository.OrderRepository, cacheSvc cache.RedisCacheService) *OrderHandler {
+	return &OrderHandler{orderService: orderService, orderRepo: orderRepo, cache: cacheSvc}
 }
 
 func (h *OrderHandler) CreateWebOrder(c *gin.Context) {
@@ -66,7 +70,10 @@ func (h *OrderHandler) TrackOrders(c *gin.Context) {
 	code := c.Query("code")
 
 	if code != "" {
-		order, err := h.orderRepo.GetByCode(c.Request.Context(), code)
+		cacheKey := "shop:order:code:" + code
+		order, err := cache.CacheAside(c.Request.Context(), h.cache, cacheKey, 1*time.Minute, func() (*model.Order, error) {
+			return h.orderRepo.GetByCode(c.Request.Context(), code)
+		})
 		if err != nil {
 			response.HandleError(c, err)
 			return

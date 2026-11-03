@@ -12,7 +12,7 @@ type ConfigModule struct {
 }
 
 func NewConfigModule(mc *ModuleContext) Module {
-	h := handler.NewConfigHandler(mc.ConfigRepo)
+	h := handler.NewConfigHandler(mc.ConfigRepo, mc.Redis)
 	return &ConfigModule{
 		handler: h,
 		cfg:     mc.Config,

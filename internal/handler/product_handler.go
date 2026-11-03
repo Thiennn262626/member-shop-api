@@ -4,24 +4,36 @@ import (
 	"member-shop-api/internal/model"
 	"member-shop-api/internal/repository"
 	"member-shop-api/pkg/apperror"
+	"member-shop-api/pkg/cache"
 	"member-shop-api/pkg/response"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 type ProductHandler struct {
-	repo repository.ProductRepository
+	repo  repository.ProductRepository
+	cache cache.RedisCacheService
 }
 
-func NewProductHandler(repo repository.ProductRepository) *ProductHandler {
-	return &ProductHandler{repo: repo}
+func NewProductHandler(repo repository.ProductRepository, cacheSvc cache.RedisCacheService) *ProductHandler {
+	return &ProductHandler{repo: repo, cache: cacheSvc}
 }
 
 func (h *ProductHandler) GetProducts(c *gin.Context) {
 	onlyActive := c.Query("all") != "true"
-	products, err := h.repo.GetAll(c.Request.Context(), onlyActive)
+	cacheKey := cache.KeyProductsActive
+	ttl := 15 * time.Minute
+	if !onlyActive {
+		cacheKey = cache.KeyProductsAll
+		ttl = 5 * time.Minute
+	}
+
+	products, err := cache.CacheAside(c.Request.Context(), h.cache, cacheKey, ttl, func() ([]model.Product, error) {
+		return h.repo.GetAll(c.Request.Context(), onlyActive)
+	})
 	if err != nil {
 		response.HandleError(c, err)
 		return
@@ -37,7 +49,10 @@ func (h *ProductHandler) GetProductByID(c *gin.Context) {
 		return
 	}
 
-	prod, err := h.repo.GetByID(c.Request.Context(), id)
+	cacheKey := "shop:product:" + idStr
+	prod, err := cache.CacheAside(c.Request.Context(), h.cache, cacheKey, 30*time.Minute, func() (*model.Product, error) {
+		return h.repo.GetByID(c.Request.Context(), id)
+	})
 	if err != nil {
 		response.HandleError(c, err)
 		return
@@ -60,6 +75,10 @@ func (h *ProductHandler) CreateProduct(c *gin.Context) {
 		response.HandleError(c, err)
 		return
 	}
+
+	// Invalidate Cache liên quan đến sản phẩm
+	cache.InvalidatePattern(c.Request.Context(), h.cache, cache.PatternProducts)
+
 	response.CreatedWithMsg(c, "Tạo sản phẩm thành công", p)
 }
 
@@ -85,6 +104,10 @@ func (h *ProductHandler) UpdateProduct(c *gin.Context) {
 		response.HandleError(c, err)
 		return
 	}
+
+	// Invalidate Cache liên quan đến sản phẩm
+	cache.InvalidatePattern(c.Request.Context(), h.cache, cache.PatternProducts)
+
 	response.SuccessWithMsg(c, "Cập nhật sản phẩm thành công", updated)
 }
 
@@ -101,6 +124,10 @@ func (h *ProductHandler) ToggleProductStatus(c *gin.Context) {
 		response.HandleError(c, err)
 		return
 	}
+
+	// Invalidate Cache liên quan đến sản phẩm
+	cache.InvalidatePattern(c.Request.Context(), h.cache, cache.PatternProducts)
+
 	response.SuccessWithMsg(c, "Cập nhật trạng thái sản phẩm thành công", updated)
 }
 
@@ -118,6 +145,10 @@ func (h *ProductHandler) ToggleAllProductsStatus(c *gin.Context) {
 		response.HandleError(c, err)
 		return
 	}
+
+	// Invalidate Cache liên quan đến sản phẩm
+	cache.InvalidatePattern(c.Request.Context(), h.cache, cache.PatternProducts)
+
 	response.SuccessWithMsg(c, "Thay đổi trạng thái danh mục sản phẩm thành công", nil)
 }
 
@@ -135,6 +166,10 @@ func (h *ProductHandler) ToggleOptionAvailability(c *gin.Context) {
 		response.HandleError(c, err)
 		return
 	}
+
+	// Invalidate Cache liên quan đến sản phẩm
+	cache.InvalidatePattern(c.Request.Context(), h.cache, cache.PatternProducts)
+
 	response.SuccessWithMsg(c, "Thay đổi trạng thái tùy chọn thành công", nil)
 }
 
@@ -150,5 +185,9 @@ func (h *ProductHandler) DeleteProduct(c *gin.Context) {
 		response.HandleError(c, err)
 		return
 	}
+
+	// Invalidate Cache liên quan đến sản phẩm
+	cache.InvalidatePattern(c.Request.Context(), h.cache, cache.PatternProducts)
+
 	response.SuccessWithMsg(c, "Xóa sản phẩm thành công", nil)
 }

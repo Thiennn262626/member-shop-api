@@ -4,8 +4,10 @@ import (
 	"member-shop-api/internal/model"
 	"member-shop-api/internal/repository"
 	"member-shop-api/pkg/apperror"
+	"member-shop-api/pkg/cache"
 	"member-shop-api/pkg/response"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -14,10 +16,16 @@ import (
 type CustomerHandler struct {
 	custRepo repository.CustomerRepository
 	txRepo   repository.PointTransactionRepository
+	cache    cache.RedisCacheService
 }
 
-func NewCustomerHandler(custRepo repository.CustomerRepository, txRepo repository.PointTransactionRepository) *CustomerHandler {
-	return &CustomerHandler{custRepo: custRepo, txRepo: txRepo}
+func NewCustomerHandler(custRepo repository.CustomerRepository, txRepo repository.PointTransactionRepository, cacheSvc cache.RedisCacheService) *CustomerHandler {
+	return &CustomerHandler{custRepo: custRepo, txRepo: txRepo, cache: cacheSvc}
+}
+
+type CustomerLookupResult struct {
+	Customer     *model.Customer          `json:"customer"`
+	Transactions []model.PointTransaction `json:"transactions"`
 }
 
 func (h *CustomerHandler) LookupByPhone(c *gin.Context) {
@@ -27,22 +35,34 @@ func (h *CustomerHandler) LookupByPhone(c *gin.Context) {
 		return
 	}
 
-	cust, err := h.custRepo.FindByPhone(c.Request.Context(), phone)
+	// Cache-Aside: Tra cứu hội viên theo số điện thoại (TTL: 3 phút)
+	cacheKey := cache.KeyCustomerPhonePrefix + phone
+	result, err := cache.CacheAside(c.Request.Context(), h.cache, cacheKey, 3*time.Minute, func() (*CustomerLookupResult, error) {
+		cust, err := h.custRepo.FindByPhone(c.Request.Context(), phone)
+		if err != nil {
+			return nil, err
+		}
+		if cust == nil {
+			return nil, nil
+		}
+
+		txs, _ := h.txRepo.GetByCustomerID(c.Request.Context(), cust.ID)
+		return &CustomerLookupResult{
+			Customer:     cust,
+			Transactions: txs,
+		}, nil
+	})
+
 	if err != nil {
 		response.HandleError(c, err)
 		return
 	}
-	if cust == nil {
+	if result == nil || result.Customer == nil {
 		response.FailWithStatus(c, http.StatusNotFound, apperror.CodeCustomerNotFound, "Chưa có thông tin hội viên cho số điện thoại này")
 		return
 	}
 
-	txs, _ := h.txRepo.GetByCustomerID(c.Request.Context(), cust.ID)
-
-	response.Success(c, gin.H{
-		"customer":     cust,
-		"transactions": txs,
-	})
+	response.Success(c, result)
 }
 
 func (h *CustomerHandler) GetCustomers(c *gin.Context) {
@@ -87,6 +107,9 @@ func (h *CustomerHandler) AdjustPoints(c *gin.Context) {
 		BalanceAfter:  updated.AvailablePoints,
 		Note:          req.Note,
 	})
+
+	// Invalidate Cache của khách hàng này ngay khi đổi điểm
+	cache.Invalidate(c.Request.Context(), h.cache, cache.KeyCustomerPhonePrefix+updated.Phone)
 
 	response.SuccessWithMsg(c, "Điều chỉnh điểm thưởng khách hàng thành công", updated)
 }

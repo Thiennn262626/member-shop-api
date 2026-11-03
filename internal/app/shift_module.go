@@ -12,7 +12,7 @@ type ShiftModule struct {
 }
 
 func NewShiftModule(mc *ModuleContext) Module {
-	h := handler.NewShiftHandler(mc.ShiftRepo)
+	h := handler.NewShiftHandler(mc.ShiftRepo, mc.Redis)
 	return &ShiftModule{
 		handler: h,
 		cfg:     mc.Config,

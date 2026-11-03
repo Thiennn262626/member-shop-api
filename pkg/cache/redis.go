@@ -64,8 +64,8 @@ func (cs *redisCacheService) Get(ctx context.Context, key string, dest any) erro
 	data, err := cs.rdb.Get(ctx, key).Result()
 
 	if errors.Is(err, redis.Nil) {
-		//data not found
-		cs.logger.Warn().Str("trace_id", traceID).Str("method", method).Str("key", key).Err(err).Msg("Data not found!")
+		// Cache miss - log debug
+		cs.logger.Debug().Str("trace_id", traceID).Str("method", method).Str("key", key).Msg("Cache miss")
 		return err
 	}
 
@@ -126,7 +126,7 @@ func (cs *redisCacheService) Clear(ctx context.Context, pattern string) error {
 
 	cursor := uint64(0)
 	for {
-		keys, nextCursor, err := cs.rdb.Scan(ctx, cursor, pattern, 2).Result()
+		keys, nextCursor, err := cs.rdb.Scan(ctx, cursor, pattern, 250).Result()
 		if err != nil {
 			cs.logger.Error().Str("trace_id", traceID).Str("method", method).Str("pattern", pattern).Err(err).Msg("")
 			return err

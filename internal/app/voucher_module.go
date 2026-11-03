@@ -12,7 +12,7 @@ type VoucherModule struct {
 }
 
 func NewVoucherModule(mc *ModuleContext) Module {
-	h := handler.NewVoucherHandler(mc.VoucherRepo)
+	h := handler.NewVoucherHandler(mc.VoucherRepo, mc.Redis)
 	return &VoucherModule{
 		handler: h,
 		cfg:     mc.Config,

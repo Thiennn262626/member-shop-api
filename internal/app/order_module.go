@@ -25,10 +25,11 @@ func NewOrderModule(mc *ModuleContext) Module {
 		mc.ConfigRepo,
 		mc.PointTxRepo,
 		mc.SSEHub,
+		mc.Redis,
 	)
 	mc.OrderSvc = orderSvc
 
-	h := handler.NewOrderHandler(orderSvc, mc.OrderRepo)
+	h := handler.NewOrderHandler(orderSvc, mc.OrderRepo, mc.Redis)
 
 	return &OrderModule{
 		handler: h,

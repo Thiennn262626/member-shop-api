@@ -20,7 +20,14 @@ func ConnectMongoDB(cfg *config.Config) (*MongoDB, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	clientOpts := options.Client().ApplyURI(cfg.MongoURI)
+	// Tối ưu hóa Connection Pool cho MongoDB để xử lý tải cao, duy trì kết nối sẵn sàng (keep-alive)
+	clientOpts := options.Client().
+		ApplyURI(cfg.MongoURI).
+		SetMaxPoolSize(100).
+		SetMinPoolSize(10).
+		SetMaxConnIdleTime(5 * time.Minute).
+		SetConnectTimeout(10 * time.Second)
+
 	client, err := mongo.Connect(clientOpts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create mongo client: %w", err)
@@ -33,6 +40,9 @@ func ConnectMongoDB(cfg *config.Config) (*MongoDB, error) {
 
 	database := client.Database(cfg.MongoDB)
 	logger.Log.Info().Str("database", cfg.MongoDB).Msg("✅ Connected to MongoDB successfully")
+
+	// Đảm bảo và tạo các chỉ mục hiệu năng (Indexes)
+	_ = EnsureIndexes(context.Background(), database)
 
 	return &MongoDB{
 		Client:   client,

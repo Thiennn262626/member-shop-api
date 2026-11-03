@@ -8,6 +8,7 @@ import (
 	"member-shop-api/internal/model"
 	"member-shop-api/internal/repository"
 	"member-shop-api/pkg/apperror"
+	"member-shop-api/pkg/cache"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -28,6 +29,7 @@ type orderService struct {
 	configRepo  repository.ConfigRepository
 	pointTxRepo repository.PointTransactionRepository
 	sseHub      *SSEHub
+	cache       cache.RedisCacheService
 }
 
 func NewOrderService(
@@ -39,6 +41,7 @@ func NewOrderService(
 	configRepo repository.ConfigRepository,
 	pointTxRepo repository.PointTransactionRepository,
 	sseHub *SSEHub,
+	cacheSvc cache.RedisCacheService,
 ) OrderService {
 	return &orderService{
 		orderRepo:   orderRepo,
@@ -49,11 +52,15 @@ func NewOrderService(
 		configRepo:  configRepo,
 		pointTxRepo: pointTxRepo,
 		sseHub:      sseHub,
+		cache:       cacheSvc,
 	}
 }
 
 func (s *orderService) CreateWebOrder(ctx context.Context, req dto.CreateOrderRequest) (*model.Order, *model.Customer, error) {
-	config, err := s.configRepo.GetConfig(ctx)
+	// Cache-Aside: Truy vấn cấu hình từ Cache (1h)
+	config, err := cache.CacheAside(ctx, s.cache, cache.KeyShopConfig, 1*time.Hour, func() (*model.ShopConfig, error) {
+		return s.configRepo.GetConfig(ctx)
+	})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -101,16 +108,20 @@ func (s *orderService) CreateWebOrder(ctx context.Context, req dto.CreateOrderRe
 	// 3. Phí vận chuyển
 	shippingFee := config.CalculateShippingFee(subTotal, req.FulfillmentType)
 
-	// 4. Áp dụng Voucher
+	// 4. Áp dụng Voucher (Cache-Aside)
 	var voucherDiscount int64
 	var appliedCode string
 	if req.VoucherCode != "" {
-		v, err := s.voucherRepo.GetByCode(ctx, req.VoucherCode)
+		vKey := cache.KeyVoucherPrefix + req.VoucherCode
+		v, err := cache.CacheAside(ctx, s.cache, vKey, 10*time.Minute, func() (*model.Voucher, error) {
+			return s.voucherRepo.GetByCode(ctx, req.VoucherCode)
+		})
 		if err == nil && v != nil && v.IsActive {
 			voucherDiscount = v.CalculateDiscount(subTotal)
 			if voucherDiscount > 0 {
 				appliedCode = v.Code
 				_ = s.voucherRepo.IncrementUsedCount(ctx, v.ID)
+				cache.Invalidate(ctx, s.cache, vKey)
 			}
 		}
 	}
@@ -155,6 +166,9 @@ func (s *orderService) CreateWebOrder(ctx context.Context, req dto.CreateOrderRe
 		return nil, nil, err
 	}
 
+	// Invalidate Cache của khách hàng để cập nhật thông tin điểm mới nhất
+	cache.Invalidate(ctx, s.cache, cache.KeyCustomerPhonePrefix+customer.Phone)
+
 	// Broadcast SSE: Đơn hàng mới từ web gửi tới POS quầy
 	s.sseHub.Broadcast("order_created", newOrder)
 
@@ -162,7 +176,10 @@ func (s *orderService) CreateWebOrder(ctx context.Context, req dto.CreateOrderRe
 }
 
 func (s *orderService) CreatePosOrder(ctx context.Context, req dto.CreatePosOrderRequest) (*model.Order, *model.Customer, error) {
-	config, err := s.configRepo.GetConfig(ctx)
+	// Cache-Aside: Truy vấn cấu hình từ Cache (1h)
+	config, err := cache.CacheAside(ctx, s.cache, cache.KeyShopConfig, 1*time.Hour, func() (*model.ShopConfig, error) {
+		return s.configRepo.GetConfig(ctx)
+	})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -205,12 +222,16 @@ func (s *orderService) CreatePosOrder(ctx context.Context, req dto.CreatePosOrde
 	var voucherDiscount int64
 	var appliedCode string
 	if req.VoucherCode != "" {
-		v, err := s.voucherRepo.GetByCode(ctx, req.VoucherCode)
+		vKey := cache.KeyVoucherPrefix + req.VoucherCode
+		v, err := cache.CacheAside(ctx, s.cache, vKey, 10*time.Minute, func() (*model.Voucher, error) {
+			return s.voucherRepo.GetByCode(ctx, req.VoucherCode)
+		})
 		if err == nil && v != nil && v.IsActive {
 			voucherDiscount = v.CalculateDiscount(subTotal)
 			if voucherDiscount > 0 {
 				appliedCode = v.Code
 				_ = s.voucherRepo.IncrementUsedCount(ctx, v.ID)
+				cache.Invalidate(ctx, s.cache, vKey)
 			}
 		}
 	}
@@ -324,6 +345,9 @@ func (s *orderService) CreatePosOrder(ctx context.Context, req dto.CreatePosOrde
 		}
 	}
 
+	// Invalidate Cache liên quan
+	cache.Invalidate(ctx, s.cache, cache.KeyCustomerPhonePrefix+customer.Phone, cache.KeyCurrentShift)
+
 	s.sseHub.Broadcast("order_created", newOrder)
 	return newOrder, customer, nil
 }
@@ -414,6 +438,9 @@ func (s *orderService) UpdateOrderStatus(ctx context.Context, orderID bson.Objec
 			_ = s.shiftRepo.RecordSale(ctx, updatedOrder.OrderTotal, updatedOrder.PaymentMethod)
 		}
 	}
+
+	// Invalidate Cache liên quan khi trạng thái đơn thay đổi
+	cache.Invalidate(ctx, s.cache, cache.KeyCustomerPhonePrefix+existing.CustomerPhone, cache.KeyCurrentShift, "shop:order:code:"+existing.OrderCode)
 
 	s.sseHub.Broadcast("order_updated", updatedOrder)
 	return updatedOrder, customer, nil

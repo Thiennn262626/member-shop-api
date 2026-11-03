@@ -51,12 +51,16 @@ func NewApplication(cfg *config.Config) (*Application, error) {
 
 	engine := gin.New()
 
-	// 3. Khởi tạo Redis (nếu có cấu hình)
+	// 3. Khởi tạo Cache Service (Ưu tiên Redis, tự động fallback sang High-performance In-Memory Cache)
 	var cacheRedisService cache.RedisCacheService
 	redisClient := config.NewRedisClient()
 	if redisClient != nil {
 		redisLogger := utils.NewLoggerWithPath("redis.log", zerolog.InfoLevel)
 		cacheRedisService = cache.NewRedisCacheService(redisClient, redisLogger)
+		logger.Log.Info().Msg("🚀 Redis Cache Service activated")
+	} else {
+		cacheRedisService = cache.NewMemoryCacheService()
+		logger.Log.Info().Msg("⚡ In-Memory Cache Service activated (Cache-Aside ready)")
 	}
 
 	// 4. Khởi tạo ModuleContext chứa các thành phần dùng chung truyền xuống các module

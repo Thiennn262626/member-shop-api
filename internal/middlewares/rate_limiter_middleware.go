@@ -19,8 +19,9 @@ type Client struct {
 }
 
 var (
-	mu      sync.Mutex
-	clients = make(map[string]*Client)
+	mu          sync.RWMutex
+	clients     = make(map[string]*Client)
+	cleanupOnce sync.Once
 )
 
 func getClientIP(ctx *gin.Context) string {
@@ -33,30 +34,42 @@ func getClientIP(ctx *gin.Context) string {
 }
 
 func getRateLimiter(ip string) *rate.Limiter {
+	mu.RLock()
+	client, exists := clients[ip]
+	mu.RUnlock()
+
+	if exists {
+		mu.Lock()
+		client.lastSeen = time.Now()
+		mu.Unlock()
+		return client.limiter
+	}
+
 	mu.Lock()
 	defer mu.Unlock()
 
-	client, exists := clients[ip]
-	if !exists {
-		requestSec := utils.GetIntEnv("RATE_LIMITER_REQUEST_SEC", 5)
-		brust := utils.GetIntEnv("RATE_LIMITER_REQUEST_BURST", 10)
-
-		limiter := rate.NewLimiter(rate.Limit(requestSec), brust)
-		newClient := &Client{limiter, time.Now()}
-		clients[ip] = newClient
-		return limiter
+	// Double check sau khi lấy Write Lock
+	if client, exists := clients[ip]; exists {
+		client.lastSeen = time.Now()
+		return client.limiter
 	}
 
-	client.lastSeen = time.Now()
-	return client.limiter
+	requestSec := utils.GetIntEnv("RATE_LIMITER_REQUEST_SEC", 5)
+	brust := utils.GetIntEnv("RATE_LIMITER_REQUEST_BURST", 10)
+
+	limiter := rate.NewLimiter(rate.Limit(requestSec), brust)
+	newClient := &Client{limiter, time.Now()}
+	clients[ip] = newClient
+	return limiter
 }
 
 func CleanupClients() {
-	for {
-		time.Sleep(time.Minute)
+	ticker := time.NewTicker(time.Minute)
+	for range ticker.C {
 		mu.Lock()
+		now := time.Now()
 		for ip, client := range clients {
-			if time.Since(client.lastSeen) > 3*time.Minute {
+			if now.Sub(client.lastSeen) > 3*time.Minute {
 				delete(clients, ip)
 			}
 		}
@@ -66,6 +79,11 @@ func CleanupClients() {
 
 // ab -n 20 -c 1 -H "X-API-Key:894f5978-f86b-4b04-9bc0-328e7ac6166e" http://localhost:8080/api/v1/users
 func RateLimiterMiddleware(rateLimterLogger *zerolog.Logger) gin.HandlerFunc {
+	// Khởi chạy dọn dẹp bộ nhớ RAM định kỳ chống memory leak
+	cleanupOnce.Do(func() {
+		go CleanupClients()
+	})
+
 	return func(ctx *gin.Context) {
 		ip := getClientIP(ctx)
 

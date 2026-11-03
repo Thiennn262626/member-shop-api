@@ -14,7 +14,7 @@ type ProductModule struct {
 }
 
 func NewProductModule(mc *ModuleContext) Module {
-	h := handler.NewProductHandler(mc.ProductRepo)
+	h := handler.NewProductHandler(mc.ProductRepo, mc.Redis)
 	return &ProductModule{
 		handler: h,
 		repo:    mc.ProductRepo,
