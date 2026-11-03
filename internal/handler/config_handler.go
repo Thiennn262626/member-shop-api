@@ -2,7 +2,7 @@ package handler
 
 import (
 	"member-shop-api/internal/repository"
-	"net/http"
+	"member-shop-api/pkg/response"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -19,16 +19,16 @@ func NewConfigHandler(repo repository.ConfigRepository) *ConfigHandler {
 func (h *ConfigHandler) GetConfig(c *gin.Context) {
 	cfg, err := h.repo.GetConfig(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, cfg)
+	response.Success(c, cfg)
 }
 
 func (h *ConfigHandler) UpdateConfig(c *gin.Context) {
 	var updates bson.M
 	if err := c.ShouldBindJSON(&updates); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.HandleValidationError(c, err)
 		return
 	}
 
@@ -37,8 +37,8 @@ func (h *ConfigHandler) UpdateConfig(c *gin.Context) {
 
 	updated, err := h.repo.UpdateConfig(c.Request.Context(), updates)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, updated)
+	response.SuccessWithMsg(c, "Cập nhật cấu hình cửa hàng thành công", updated)
 }

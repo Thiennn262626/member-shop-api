@@ -2,11 +2,12 @@ package services
 
 import (
 	"context"
-	"errors"
 	"member-shop-api/internal/config"
 	"member-shop-api/internal/dto"
 	"member-shop-api/internal/model"
 	"member-shop-api/internal/repository"
+	"member-shop-api/pkg/apperror"
+	"net/http"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -29,27 +30,28 @@ func NewAuthService(cfg *config.Config, staffRepo repository.StaffRepository) Au
 func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.LoginResponse, error) {
 	staff, err := s.staffRepo.FindByUsername(ctx, req.Username)
 	if err != nil {
-		return nil, err
+		return nil, apperror.Internal(err, "Không thể truy vấn thông tin nhân viên")
 	}
 	if staff == nil {
-		return nil, errors.New("tên đăng nhập hoặc mã PIN không đúng")
+		return nil, apperror.New(http.StatusUnauthorized, apperror.CodeAuthInvalidCredentials, "Tên đăng nhập hoặc mã PIN không chính xác")
 	}
 
 	if !staff.IsActive {
-		return nil, errors.New("tài khoản nhân viên này đang bị tạm khóa")
+		return nil, apperror.New(http.StatusForbidden, apperror.CodeAuthAccountLocked, "Tài khoản nhân viên này đang bị tạm khóa")
 	}
 
 	if !staff.CheckPIN(req.PIN) {
-		return nil, errors.New("tên đăng nhập hoặc mã PIN không đúng")
+		return nil, apperror.New(http.StatusUnauthorized, apperror.CodeAuthInvalidCredentials, "Tên đăng nhập hoặc mã PIN không chính xác")
 	}
 
 	accessToken, refreshToken, err := s.GenerateTokens(staff)
 	if err != nil {
-		return nil, err
+		return nil, apperror.Internal(err, "Không thể tạo token xác thực")
 	}
 
 	res := &dto.LoginResponse{
 		AccessToken:  accessToken,
+		Token:        accessToken,
 		RefreshToken: refreshToken,
 	}
 	res.User.ID = staff.ID.Hex()

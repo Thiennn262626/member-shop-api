@@ -3,7 +3,9 @@ package middlewares
 import (
 	"bytes"
 	"fmt"
+	"member-shop-api/pkg/apperror"
 	"member-shop-api/pkg/logger"
+	"member-shop-api/pkg/response"
 	"net/http"
 	"regexp"
 	"runtime/debug"
@@ -31,10 +33,8 @@ func RecoveryMiddleware(recoveryLogger *zerolog.Logger) gin.HandlerFunc {
 					Str("statck", string(stack)).
 					Msg("panic occurred")
 
-				ctx.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-					"code":    "INTERNAL_SERVER_ERROR",
-					"message": "Recovery - Please try again later.",
-				})
+				response.FailWithStatus(ctx, http.StatusInternalServerError, apperror.CodeInternalServerError, "Hệ thống gặp sự cố ngoài dự kiến, vui lòng thử lại sau.")
+				ctx.Abort()
 			}
 		}()
 

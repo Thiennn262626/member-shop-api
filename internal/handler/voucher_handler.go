@@ -4,6 +4,8 @@ import (
 	"member-shop-api/internal/dto"
 	"member-shop-api/internal/model"
 	"member-shop-api/internal/repository"
+	"member-shop-api/pkg/apperror"
+	"member-shop-api/pkg/response"
 	"net/http"
 	"time"
 
@@ -22,66 +24,66 @@ func NewVoucherHandler(repo repository.VoucherRepository) *VoucherHandler {
 func (h *VoucherHandler) ValidateVoucher(c *gin.Context) {
 	var req dto.ValidateVoucherRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.HandleValidationError(c, err)
 		return
 	}
 
 	v, err := h.repo.GetByCode(c.Request.Context(), req.Code)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
 	if v == nil {
-		c.JSON(http.StatusOK, model.VoucherValidationResult{
+		response.Success(c, model.VoucherValidationResult{
 			IsValid: false,
-			Message: "mã giảm giá không tồn tại",
+			Message: "Mã giảm giá không tồn tại trên hệ thống",
 		})
 		return
 	}
 
 	if !v.IsActive {
-		c.JSON(http.StatusOK, model.VoucherValidationResult{
+		response.Success(c, model.VoucherValidationResult{
 			IsValid: false,
-			Message: "mã giảm giá đang tạm khóa",
+			Message: "Mã giảm giá đang tạm ngưng áp dụng",
 		})
 		return
 	}
 
 	now := time.Now()
 	if now.Before(v.StartDate) {
-		c.JSON(http.StatusOK, model.VoucherValidationResult{
+		response.Success(c, model.VoucherValidationResult{
 			IsValid: false,
-			Message: "mã giảm giá chưa đến ngày áp dụng",
+			Message: "Mã giảm giá chưa đến ngày bắt đầu áp dụng",
 		})
 		return
 	}
 	if now.After(v.EndDate) {
-		c.JSON(http.StatusOK, model.VoucherValidationResult{
+		response.Success(c, model.VoucherValidationResult{
 			IsValid: false,
-			Message: "mã giảm giá đã hết hạn",
+			Message: "Mã giảm giá đã hết hạn sử dụng",
 		})
 		return
 	}
 	if v.UsageLimit > 0 && v.UsedCount >= v.UsageLimit {
-		c.JSON(http.StatusOK, model.VoucherValidationResult{
+		response.Success(c, model.VoucherValidationResult{
 			IsValid: false,
-			Message: "mã giảm giá đã hết lượt sử dụng",
+			Message: "Mã giảm giá đã hết lượt sử dụng",
 		})
 		return
 	}
 	if req.SubTotal < v.MinOrderValue {
-		c.JSON(http.StatusOK, model.VoucherValidationResult{
+		response.Success(c, model.VoucherValidationResult{
 			IsValid: false,
-			Message: "đơn hàng chưa đạt giá trị tối thiểu để áp dụng mã này",
+			Message: "Giá trị đơn hàng chưa đạt mức tối thiểu để áp dụng mã giảm giá này",
 		})
 		return
 	}
 
 	discount := v.CalculateDiscount(req.SubTotal)
-	c.JSON(http.StatusOK, model.VoucherValidationResult{
+	response.Success(c, model.VoucherValidationResult{
 		IsValid:        true,
 		DiscountAmount: discount,
-		Message:        "áp dụng mã giảm giá thành công",
+		Message:        "Áp dụng mã giảm giá thành công",
 		Voucher:        v,
 	})
 }
@@ -89,37 +91,37 @@ func (h *VoucherHandler) ValidateVoucher(c *gin.Context) {
 func (h *VoucherHandler) GetAll(c *gin.Context) {
 	list, err := h.repo.GetAll(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, list)
+	response.Success(c, list)
 }
 
 func (h *VoucherHandler) Create(c *gin.Context) {
 	var v model.Voucher
 	if err := c.ShouldBindJSON(&v); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.HandleValidationError(c, err)
 		return
 	}
 
 	if err := h.repo.Create(c.Request.Context(), &v); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, v)
+	response.CreatedWithMsg(c, "Tạo mã giảm giá mới thành công", v)
 }
 
 func (h *VoucherHandler) Update(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := bson.ObjectIDFromHex(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "mã voucher không đúng"})
+		response.FailWithStatus(c, http.StatusBadRequest, apperror.CodeBadRequest, "Mã voucher không đúng định dạng")
 		return
 	}
 
 	var updates bson.M
 	if err := c.ShouldBindJSON(&updates); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.HandleValidationError(c, err)
 		return
 	}
 
@@ -128,23 +130,23 @@ func (h *VoucherHandler) Update(c *gin.Context) {
 
 	updated, err := h.repo.Update(c.Request.Context(), id, updates)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, updated)
+	response.SuccessWithMsg(c, "Cập nhật mã giảm giá thành công", updated)
 }
 
 func (h *VoucherHandler) Delete(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := bson.ObjectIDFromHex(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "mã voucher không đúng"})
+		response.FailWithStatus(c, http.StatusBadRequest, apperror.CodeBadRequest, "Mã voucher không đúng định dạng")
 		return
 	}
 
 	if err := h.repo.Delete(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true})
+	response.SuccessWithMsg(c, "Xóa mã giảm giá thành công", nil)
 }

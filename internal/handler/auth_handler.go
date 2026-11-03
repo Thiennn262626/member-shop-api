@@ -5,6 +5,8 @@ import (
 	"member-shop-api/internal/model"
 	"member-shop-api/internal/repository"
 	"member-shop-api/internal/services"
+	"member-shop-api/pkg/apperror"
+	"member-shop-api/pkg/response"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -23,17 +25,17 @@ func NewAuthHandler(authService services.AuthService, staffRepo repository.Staff
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req dto.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.HandleValidationError(c, err)
 		return
 	}
 
 	res, err := h.authService.Login(c.Request.Context(), req)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, res)
+	response.SuccessWithMsg(c, "Đăng nhập thành công", res)
 }
 
 func (h *AuthHandler) GetMe(c *gin.Context) {
@@ -42,7 +44,7 @@ func (h *AuthHandler) GetMe(c *gin.Context) {
 	username, _ := c.Get("username")
 	name, _ := c.Get("name")
 
-	c.JSON(http.StatusOK, gin.H{
+	response.Success(c, gin.H{
 		"id":       userIDStr,
 		"username": username,
 		"name":     name,
@@ -53,10 +55,10 @@ func (h *AuthHandler) GetMe(c *gin.Context) {
 func (h *AuthHandler) GetAllStaff(c *gin.Context) {
 	list, err := h.staffRepo.GetAll(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, list)
+	response.Success(c, list)
 }
 
 func (h *AuthHandler) CreateStaff(c *gin.Context) {
@@ -70,7 +72,7 @@ func (h *AuthHandler) CreateStaff(c *gin.Context) {
 		PIN        string `json:"pin" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.HandleValidationError(c, err)
 		return
 	}
 
@@ -84,22 +86,22 @@ func (h *AuthHandler) CreateStaff(c *gin.Context) {
 		IsActive:   true,
 	}
 	if err := staff.SetPIN(req.PIN); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, apperror.Internal(err, "Không thể mã hóa mã PIN"))
 		return
 	}
 
 	if err := h.staffRepo.Create(c.Request.Context(), staff); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, staff)
+	response.CreatedWithMsg(c, "Tạo tài khoản nhân viên thành công", staff)
 }
 
 func (h *AuthHandler) UpdateStaff(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := bson.ObjectIDFromHex(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "mã nhân viên không đúng"})
+		response.FailWithStatus(c, http.StatusBadRequest, apperror.CodeBadRequest, "Mã nhân viên không đúng định dạng")
 		return
 	}
 
@@ -112,7 +114,7 @@ func (h *AuthHandler) UpdateStaff(c *gin.Context) {
 		PIN        *string `json:"pin"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.HandleValidationError(c, err)
 		return
 	}
 
@@ -140,24 +142,24 @@ func (h *AuthHandler) UpdateStaff(c *gin.Context) {
 
 	updated, err := h.staffRepo.Update(c.Request.Context(), id, updates)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, updated)
+	response.SuccessWithMsg(c, "Cập nhật tài khoản nhân viên thành công", updated)
 }
 
 func (h *AuthHandler) ToggleStaffStatus(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := bson.ObjectIDFromHex(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "mã nhân viên không đúng"})
+		response.FailWithStatus(c, http.StatusBadRequest, apperror.CodeBadRequest, "Mã nhân viên không đúng định dạng")
 		return
 	}
 
 	updated, err := h.staffRepo.ToggleStatus(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, updated)
+	response.SuccessWithMsg(c, "Thay đổi trạng thái hoạt động thành công", updated)
 }

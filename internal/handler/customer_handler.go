@@ -3,6 +3,8 @@ package handler
 import (
 	"member-shop-api/internal/model"
 	"member-shop-api/internal/repository"
+	"member-shop-api/pkg/apperror"
+	"member-shop-api/pkg/response"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -21,23 +23,23 @@ func NewCustomerHandler(custRepo repository.CustomerRepository, txRepo repositor
 func (h *CustomerHandler) LookupByPhone(c *gin.Context) {
 	phone := c.Query("phone")
 	if phone == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "vui lòng nhập số điện thoại"})
+		response.FailWithStatus(c, http.StatusBadRequest, apperror.CodeBadRequest, "Vui lòng cung cấp số điện thoại khách hàng")
 		return
 	}
 
 	cust, err := h.custRepo.FindByPhone(c.Request.Context(), phone)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
 	if cust == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "chưa có thông tin hội viên cho số này"})
+		response.FailWithStatus(c, http.StatusNotFound, apperror.CodeCustomerNotFound, "Chưa có thông tin hội viên cho số điện thoại này")
 		return
 	}
 
 	txs, _ := h.txRepo.GetByCustomerID(c.Request.Context(), cust.ID)
 
-	c.JSON(http.StatusOK, gin.H{
+	response.Success(c, gin.H{
 		"customer":     cust,
 		"transactions": txs,
 	})
@@ -46,17 +48,17 @@ func (h *CustomerHandler) LookupByPhone(c *gin.Context) {
 func (h *CustomerHandler) GetCustomers(c *gin.Context) {
 	list, err := h.custRepo.GetAll(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, list)
+	response.Success(c, list)
 }
 
 func (h *CustomerHandler) AdjustPoints(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := bson.ObjectIDFromHex(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "mã khách hàng không đúng"})
+		response.FailWithStatus(c, http.StatusBadRequest, apperror.CodeBadRequest, "Mã khách hàng không đúng định dạng")
 		return
 	}
 
@@ -65,13 +67,13 @@ func (h *CustomerHandler) AdjustPoints(c *gin.Context) {
 		Note        string `json:"note"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.HandleValidationError(c, err)
 		return
 	}
 
 	updated, err := h.custRepo.AdjustPoints(c.Request.Context(), id, req.PointsDelta)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
 
@@ -86,5 +88,5 @@ func (h *CustomerHandler) AdjustPoints(c *gin.Context) {
 		Note:          req.Note,
 	})
 
-	c.JSON(http.StatusOK, updated)
+	response.SuccessWithMsg(c, "Điều chỉnh điểm thưởng khách hàng thành công", updated)
 }

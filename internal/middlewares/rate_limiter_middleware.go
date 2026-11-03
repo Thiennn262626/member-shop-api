@@ -2,6 +2,8 @@ package middlewares
 
 import (
 	"member-shop-api/internal/utils"
+	"member-shop-api/pkg/apperror"
+	"member-shop-api/pkg/response"
 	"net/http"
 	"sync"
 	"time"
@@ -86,11 +88,8 @@ func RateLimiterMiddleware(rateLimterLogger *zerolog.Logger) gin.HandlerFunc {
 					Msg("rate limiter exceeded")
 			}
 
-			ctx.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-				"error":   "Too many request",
-				"message": "Bạn đã gửi quá nhiêu request. Hãy thử lại sau",
-			})
-
+			response.FailWithStatus(ctx, http.StatusTooManyRequests, apperror.CodeTooManyRequests, "Bạn đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau ít phút.")
+			ctx.Abort()
 			return
 		}
 

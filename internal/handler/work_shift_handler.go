@@ -6,6 +6,8 @@ import (
 	"member-shop-api/internal/dto"
 	"member-shop-api/internal/model"
 	"member-shop-api/internal/repository"
+	"member-shop-api/pkg/apperror"
+	"member-shop-api/pkg/response"
 	"net/http"
 	"strings"
 	"time"
@@ -38,28 +40,32 @@ func (h *WorkShiftHandler) GetWorkShifts(c *gin.Context) {
 
 	shifts, err := h.repo.GetByMonth(c.Request.Context(), monthStr, staffID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, shifts)
+	response.Success(c, shifts)
 }
 
 func (h *WorkShiftHandler) SaveRoster(c *gin.Context) {
 	var req dto.SaveRosterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.HandleValidationError(c, err)
 		return
 	}
 
 	staffID, err := bson.ObjectIDFromHex(req.StaffID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "mã nhân viên không đúng"})
+		response.FailWithStatus(c, http.StatusBadRequest, apperror.CodeBadRequest, "Mã nhân viên không đúng định dạng")
 		return
 	}
 
 	staff, err := h.staffRepo.FindByID(c.Request.Context(), staffID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "không tìm thấy nhân viên"})
+		response.HandleError(c, err)
+		return
+	}
+	if staff == nil {
+		response.FailWithStatus(c, http.StatusNotFound, apperror.CodeStaffNotFound, "Không tìm thấy thông tin nhân viên")
 		return
 	}
 
@@ -103,24 +109,26 @@ func (h *WorkShiftHandler) SaveRoster(c *gin.Context) {
 	}
 
 	if err := h.repo.CreateBatch(c.Request.Context(), newShifts); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "createdCount": len(newShifts)})
+	response.SuccessWithMsg(c, "Lưu bảng xếp ca tháng thành công", gin.H{
+		"createdCount": len(newShifts),
+	})
 }
 
 func (h *WorkShiftHandler) ConfirmAttendance(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := bson.ObjectIDFromHex(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "mã ca không đúng"})
+		response.FailWithStatus(c, http.StatusBadRequest, apperror.CodeBadRequest, "Mã ca làm việc không đúng định dạng")
 		return
 	}
 
 	var req dto.ConfirmAttendanceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.HandleValidationError(c, err)
 		return
 	}
 
@@ -137,17 +145,17 @@ func (h *WorkShiftHandler) ConfirmAttendance(c *gin.Context) {
 
 	updated, err := h.repo.Update(c.Request.Context(), id, updates)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, updated)
+	response.SuccessWithMsg(c, "Xác nhận chấm công thành công", updated)
 }
 
 func (h *WorkShiftHandler) CheckIn(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := bson.ObjectIDFromHex(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "mã ca không đúng"})
+		response.FailWithStatus(c, http.StatusBadRequest, apperror.CodeBadRequest, "Mã ca làm việc không đúng định dạng")
 		return
 	}
 
@@ -162,10 +170,10 @@ func (h *WorkShiftHandler) CheckIn(c *gin.Context) {
 
 	updated, err := h.repo.Update(c.Request.Context(), id, updates)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, updated)
+	response.SuccessWithMsg(c, "Điểm danh vào ca thành công", updated)
 }
 
 func (h *WorkShiftHandler) GetPayroll(c *gin.Context) {
@@ -176,17 +184,17 @@ func (h *WorkShiftHandler) GetPayroll(c *gin.Context) {
 
 	payroll, err := h.repo.GetPayrollSummary(c.Request.Context(), monthStr)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, payroll)
+	response.Success(c, payroll)
 }
 
 func (h *WorkShiftHandler) AdjustPayroll(c *gin.Context) {
 	staffIDStr := c.Param("staffId")
 	staffID, err := bson.ObjectIDFromHex(staffIDStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "mã nhân viên không đúng"})
+		response.FailWithStatus(c, http.StatusBadRequest, apperror.CodeBadRequest, "Mã nhân viên không đúng định dạng")
 		return
 	}
 
@@ -197,16 +205,16 @@ func (h *WorkShiftHandler) AdjustPayroll(c *gin.Context) {
 
 	var req dto.PayrollAdjustmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.HandleValidationError(c, err)
 		return
 	}
 
 	err = h.repo.SavePayrollAdjustment(c.Request.Context(), monthStr, staffID, req.Allowance, req.Deduction)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true})
+	response.SuccessWithMsg(c, "Điều chỉnh phụ cấp và giảm trừ thành công", nil)
 }
 
 func (h *WorkShiftHandler) FinalizePayroll(c *gin.Context) {
@@ -220,8 +228,8 @@ func (h *WorkShiftHandler) FinalizePayroll(c *gin.Context) {
 
 	err := h.repo.FinalizePayroll(c.Request.Context(), monthStr, finBy)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "đã chốt bảng lương tháng " + monthStr})
+	response.SuccessWithMsg(c, fmt.Sprintf("Đã chốt bảng lương tháng %s", monthStr), nil)
 }

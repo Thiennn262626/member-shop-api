@@ -1,9 +1,12 @@
 package handler
 
 import (
+	"math"
 	"member-shop-api/internal/dto"
 	"member-shop-api/internal/repository"
 	"member-shop-api/internal/services"
+	"member-shop-api/pkg/apperror"
+	"member-shop-api/pkg/response"
 	"net/http"
 	"strconv"
 
@@ -23,17 +26,17 @@ func NewOrderHandler(orderService services.OrderService, orderRepo repository.Or
 func (h *OrderHandler) CreateWebOrder(c *gin.Context) {
 	var req dto.CreateOrderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.HandleValidationError(c, err)
 		return
 	}
 
 	order, customer, err := h.orderService.CreateWebOrder(c.Request.Context(), req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
+	response.CreatedWithMsg(c, "Đặt hàng thành công", gin.H{
 		"order":    order,
 		"customer": customer,
 	})
@@ -42,17 +45,17 @@ func (h *OrderHandler) CreateWebOrder(c *gin.Context) {
 func (h *OrderHandler) CreatePosOrder(c *gin.Context) {
 	var req dto.CreatePosOrderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.HandleValidationError(c, err)
 		return
 	}
 
 	order, customer, err := h.orderService.CreatePosOrder(c.Request.Context(), req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
+	response.CreatedWithMsg(c, "Tạo đơn hàng POS thành công", gin.H{
 		"order":    order,
 		"customer": customer,
 	})
@@ -65,33 +68,36 @@ func (h *OrderHandler) TrackOrders(c *gin.Context) {
 	if code != "" {
 		order, err := h.orderRepo.GetByCode(c.Request.Context(), code)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			response.HandleError(c, err)
 			return
 		}
 		if order == nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "không tìm thấy đơn hàng"})
+			response.FailWithStatus(c, http.StatusNotFound, apperror.CodeOrderNotFound, "Không tìm thấy đơn hàng với mã yêu cầu")
 			return
 		}
-		c.JSON(http.StatusOK, []any{order})
+		response.Success(c, []any{order})
 		return
 	}
 
 	if phone != "" {
 		orders, err := h.orderRepo.GetByPhone(c.Request.Context(), phone)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			response.HandleError(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, orders)
+		response.Success(c, orders)
 		return
 	}
 
-	c.JSON(http.StatusBadRequest, gin.H{"error": "cần truyền phone hoặc code để tra cứu"})
+	response.FailWithStatus(c, http.StatusBadRequest, apperror.CodeBadRequest, "Vui lòng cung cấp số điện thoại hoặc mã đơn hàng để tra cứu")
 }
 
 func (h *OrderHandler) GetOrders(c *gin.Context) {
 	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "50"), 10, 64)
 	offset, _ := strconv.ParseInt(c.DefaultQuery("offset", "0"), 10, 64)
+	if limit <= 0 {
+		limit = 50
+	}
 
 	filter := repository.OrderFilter{
 		Status:        c.Query("status"),
@@ -104,15 +110,18 @@ func (h *OrderHandler) GetOrders(c *gin.Context) {
 
 	orders, total, err := h.orderRepo.GetList(c.Request.Context(), filter)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"data":   orders,
-		"total":  total,
-		"limit":  limit,
-		"offset": offset,
+	page := int(offset/limit) + 1
+	totalPages := int(math.Ceil(float64(total) / float64(limit)))
+
+	response.SuccessWithMeta(c, orders, &response.Meta{
+		Page:       page,
+		PageSize:   int(limit),
+		Total:      total,
+		TotalPages: totalPages,
 	})
 }
 
@@ -120,23 +129,23 @@ func (h *OrderHandler) UpdateOrderStatus(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := bson.ObjectIDFromHex(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "mã đơn hàng không đúng"})
+		response.FailWithStatus(c, http.StatusBadRequest, apperror.CodeBadRequest, "Mã đơn hàng không đúng định dạng")
 		return
 	}
 
 	var req dto.UpdateOrderStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.HandleValidationError(c, err)
 		return
 	}
 
 	order, customer, err := h.orderService.UpdateOrderStatus(c.Request.Context(), id, req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	response.SuccessWithMsg(c, "Cập nhật trạng thái đơn hàng thành công", gin.H{
 		"order":    order,
 		"customer": customer,
 	})
@@ -146,14 +155,18 @@ func (h *OrderHandler) GetOrderByID(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := bson.ObjectIDFromHex(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "mã đơn hàng không đúng"})
+		response.FailWithStatus(c, http.StatusBadRequest, apperror.CodeBadRequest, "Mã đơn hàng không đúng định dạng")
 		return
 	}
 
 	order, err := h.orderRepo.GetByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "không tìm thấy đơn hàng"})
+		response.HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, order)
+	if order == nil {
+		response.FailWithStatus(c, http.StatusNotFound, apperror.CodeOrderNotFound, "Không tìm thấy thông tin đơn hàng")
+		return
+	}
+	response.Success(c, order)
 }

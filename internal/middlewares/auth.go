@@ -3,6 +3,8 @@ package middlewares
 import (
 	"fmt"
 	"member-shop-api/internal/config"
+	"member-shop-api/pkg/apperror"
+	"member-shop-api/pkg/response"
 	"net/http"
 	"strings"
 
@@ -14,13 +16,15 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "thiếu token xác thực"})
+			response.FailWithStatus(c, http.StatusUnauthorized, apperror.CodeUnauthorized, "Yêu cầu cung cấp Authorization header để xác thực")
+			c.Abort()
 			return
 		}
 
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "định dạng token không hợp lệ"})
+			response.FailWithStatus(c, http.StatusUnauthorized, apperror.CodeUnauthorized, "Định dạng token không hợp lệ (phải có tiền tố Bearer)")
+			c.Abort()
 			return
 		}
 
@@ -33,13 +37,15 @@ func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 		})
 
 		if err != nil || !token.Valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token không hợp lệ hoặc đã hết hạn"})
+			response.FailWithStatus(c, http.StatusUnauthorized, apperror.CodeAuthTokenInvalid, "Token xác thực không hợp lệ hoặc đã hết hạn")
+			c.Abort()
 			return
 		}
 
 		claims, ok := token.Claims.(jwt.MapClaims)
 		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "claims token không hợp lệ"})
+			response.FailWithStatus(c, http.StatusUnauthorized, apperror.CodeAuthTokenInvalid, "Claims trong token không hợp lệ")
+			c.Abort()
 			return
 		}
 
@@ -54,7 +60,8 @@ func RequireOwner() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		role, exists := c.Get("role")
 		if !exists || role != "owner" {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "chức năng chỉ dành cho Chủ Cửa Hàng (Owner)"})
+			response.FailWithStatus(c, http.StatusForbidden, apperror.CodeForbidden, "Quyền truy cập bị từ chối: Chức năng chỉ dành cho Chủ Cửa Hàng (Owner)")
+			c.Abort()
 			return
 		}
 		c.Next()

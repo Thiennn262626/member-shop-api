@@ -7,6 +7,7 @@ import (
 	"member-shop-api/internal/dto"
 	"member-shop-api/internal/model"
 	"member-shop-api/internal/repository"
+	"member-shop-api/pkg/apperror"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -330,7 +331,10 @@ func (s *orderService) CreatePosOrder(ctx context.Context, req dto.CreatePosOrde
 func (s *orderService) UpdateOrderStatus(ctx context.Context, orderID bson.ObjectID, req dto.UpdateOrderStatusRequest) (*model.Order, *model.Customer, error) {
 	existing, err := s.orderRepo.GetByID(ctx, orderID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, apperror.Internal(err, "Không thể truy vấn thông tin đơn hàng")
+	}
+	if existing == nil {
+		return nil, nil, apperror.NotFound("Không tìm thấy đơn hàng yêu cầu cập nhật")
 	}
 
 	now := time.Now()

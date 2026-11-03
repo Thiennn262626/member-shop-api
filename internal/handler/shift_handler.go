@@ -6,6 +6,8 @@ import (
 	"member-shop-api/internal/dto"
 	"member-shop-api/internal/model"
 	"member-shop-api/internal/repository"
+	"member-shop-api/pkg/apperror"
+	"member-shop-api/pkg/response"
 	"net/http"
 	"strconv"
 	"time"
@@ -25,26 +27,23 @@ func NewShiftHandler(repo repository.ShiftRepository) *ShiftHandler {
 func (h *ShiftHandler) GetCurrentShift(c *gin.Context) {
 	shift, err := h.repo.GetCurrentOpenShift(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
-	if shift == nil {
-		c.JSON(http.StatusOK, gin.H{"shift": nil, "message": "không có ca làm việc nào đang mở"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"shift": shift})
+	response.Success(c, gin.H{"shift": shift})
 }
 
 func (h *ShiftHandler) OpenShift(c *gin.Context) {
 	current, _ := h.repo.GetCurrentOpenShift(c.Request.Context())
 	if current != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("đang có ca '%s' chưa chốt két, vui lòng chốt két ca cũ trước", current.ShiftName)})
+		response.FailWithStatus(c, http.StatusConflict, apperror.CodeShiftAlreadyOpen,
+			fmt.Sprintf("Đang có ca '%s' chưa chốt két, vui lòng kết thúc ca cũ trước", current.ShiftName))
 		return
 	}
 
 	var req dto.OpenShiftRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.HandleValidationError(c, err)
 		return
 	}
 
@@ -67,32 +66,32 @@ func (h *ShiftHandler) OpenShift(c *gin.Context) {
 	}
 
 	if err := h.repo.Create(c.Request.Context(), newShift); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, newShift)
+	response.CreatedWithMsg(c, "Mở ca thu ngân thành công", newShift)
 }
 
 func (h *ShiftHandler) CloseShift(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := bson.ObjectIDFromHex(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "mã ca không đúng"})
+		response.FailWithStatus(c, http.StatusBadRequest, apperror.CodeBadRequest, "Mã ca thu ngân không đúng định dạng")
 		return
 	}
 
 	var req dto.CloseShiftRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		response.HandleValidationError(c, err)
 		return
 	}
 
 	closed, err := h.repo.Close(c.Request.Context(), id, req.ActualCash, req.Notes, req.NextStaffName)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, closed)
+	response.SuccessWithMsg(c, "Kết ca và chốt két thành công", closed)
 }
 
 func (h *ShiftHandler) GetHistory(c *gin.Context) {
@@ -101,8 +100,8 @@ func (h *ShiftHandler) GetHistory(c *gin.Context) {
 
 	history, err := h.repo.GetHistory(c.Request.Context(), limit, offset)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		response.HandleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, history)
+	response.Success(c, history)
 }
