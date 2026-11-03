@@ -22,7 +22,7 @@ type DeliveryConfig struct {
 }
 
 type ShopConfig struct {
-	ID                string         `json:"id" bson:"_id"` // "current_config"
+	ID                string         `json:"-" bson:"_id"` // Ẩn khỏi JSON để không trả dư trường ID cấu hình nội bộ
 	ShopName          string         `json:"shopName" bson:"shopName"`
 	Tagline           string         `json:"tagline" bson:"tagline"`
 	Hotline           string         `json:"hotline" bson:"hotline"`

@@ -14,17 +14,29 @@ import (
 )
 
 type CustomerHandler struct {
-	custRepo repository.CustomerRepository
-	txRepo   repository.PointTransactionRepository
-	cache    cache.RedisCacheService
+	custRepo  repository.CustomerRepository
+	txRepo    repository.PointTransactionRepository
+	orderRepo repository.OrderRepository
+	cache     cache.RedisCacheService
 }
 
-func NewCustomerHandler(custRepo repository.CustomerRepository, txRepo repository.PointTransactionRepository, cacheSvc cache.RedisCacheService) *CustomerHandler {
-	return &CustomerHandler{custRepo: custRepo, txRepo: txRepo, cache: cacheSvc}
+func NewCustomerHandler(
+	custRepo repository.CustomerRepository,
+	txRepo repository.PointTransactionRepository,
+	orderRepo repository.OrderRepository,
+	cacheSvc cache.RedisCacheService,
+) *CustomerHandler {
+	return &CustomerHandler{
+		custRepo:  custRepo,
+		txRepo:    txRepo,
+		orderRepo: orderRepo,
+		cache:     cacheSvc,
+	}
 }
 
 type CustomerLookupResult struct {
 	Customer     *model.Customer          `json:"customer"`
+	Orders       []model.Order            `json:"orders"`
 	Transactions []model.PointTransaction `json:"transactions"`
 }
 
@@ -46,9 +58,17 @@ func (h *CustomerHandler) LookupByPhone(c *gin.Context) {
 			return nil, nil
 		}
 
+		orders, _ := h.orderRepo.GetByPhone(c.Request.Context(), cust.Phone)
+		if orders == nil {
+			orders = []model.Order{}
+		}
 		txs, _ := h.txRepo.GetByCustomerID(c.Request.Context(), cust.ID)
+		if txs == nil {
+			txs = []model.PointTransaction{}
+		}
 		return &CustomerLookupResult{
 			Customer:     cust,
+			Orders:       orders,
 			Transactions: txs,
 		}, nil
 	})
@@ -70,6 +90,9 @@ func (h *CustomerHandler) GetCustomers(c *gin.Context) {
 	if err != nil {
 		response.HandleError(c, err)
 		return
+	}
+	if list == nil {
+		list = []model.Customer{}
 	}
 	response.Success(c, list)
 }

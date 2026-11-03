@@ -139,11 +139,18 @@ func (h *AuthHandler) GetMe(c *gin.Context) {
 	username, _ := c.Get("username")
 	name, _ := c.Get("name")
 
+	roleStr, _ := role.(string)
+	roleTitle := "Thu Ngân Ca Trực"
+	if roleStr == "owner" {
+		roleTitle = "Chủ Tiệm (Toàn Quyền)"
+	}
+
 	response.Success(c, gin.H{
-		"id":       userIDStr,
-		"username": username,
-		"name":     name,
-		"role":     role,
+		"id":        userIDStr,
+		"username":  username,
+		"name":      name,
+		"role":      role,
+		"roleTitle": roleTitle,
 	})
 }
 
@@ -152,6 +159,9 @@ func (h *AuthHandler) GetAllStaff(c *gin.Context) {
 	if err != nil {
 		response.HandleError(c, err)
 		return
+	}
+	if list == nil {
+		list = []model.StaffAccount{}
 	}
 	response.Success(c, list)
 }

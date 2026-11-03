@@ -43,7 +43,7 @@ func NewOrderRepository(db *mongo.Database) OrderRepository {
 
 func (r *orderRepo) Create(ctx context.Context, order *model.Order) error {
 	now := time.Now()
-	order.Timeline.CreatedAt = now
+	order.CreatedAt = now
 	res, err := r.coll.InsertOne(ctx, order)
 	if err != nil {
 		return err
@@ -77,7 +77,7 @@ func (r *orderRepo) GetByCode(ctx context.Context, code string) (*model.Order, e
 }
 
 func (r *orderRepo) GetByPhone(ctx context.Context, phone string) ([]model.Order, error) {
-	opts := options.Find().SetSort(bson.D{{Key: "timeline.createdAt", Value: -1}})
+	opts := options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}})
 	cursor, err := r.coll.Find(ctx, bson.M{"customerPhone": phone}, opts)
 	if err != nil {
 		return nil, err
@@ -119,7 +119,7 @@ func (r *orderRepo) GetList(ctx context.Context, filter OrderFilter) ([]model.Or
 		if filter.EndDate != nil {
 			timeQuery["$lte"] = *filter.EndDate
 		}
-		query["timeline.createdAt"] = timeQuery
+		query["createdAt"] = timeQuery
 	}
 
 	total, err := r.coll.CountDocuments(ctx, query)
@@ -127,7 +127,7 @@ func (r *orderRepo) GetList(ctx context.Context, filter OrderFilter) ([]model.Or
 		return nil, 0, err
 	}
 
-	findOpts := options.Find().SetSort(bson.D{{Key: "timeline.createdAt", Value: -1}})
+	findOpts := options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}})
 	if filter.Limit > 0 {
 		findOpts.SetLimit(filter.Limit)
 	}
@@ -167,13 +167,13 @@ func (r *orderRepo) UpdateStatus(ctx context.Context, id bson.ObjectID, status m
 
 	switch status {
 	case model.OrderStatusConfirmed:
-		updates["timeline.confirmedAt"] = now
+		updates["confirmedAt"] = now
 	case model.OrderStatusShipping:
-		updates["timeline.shippingAt"] = now
+		updates["shippingAt"] = now
 	case model.OrderStatusCompleted:
-		updates["timeline.completedAt"] = now
+		updates["completedAt"] = now
 	case model.OrderStatusCancelled:
-		updates["timeline.cancelledAt"] = now
+		updates["cancelledAt"] = now
 	}
 
 	return r.Update(ctx, id, updates)

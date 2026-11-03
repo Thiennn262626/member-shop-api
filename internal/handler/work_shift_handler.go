@@ -43,6 +43,9 @@ func (h *WorkShiftHandler) GetWorkShifts(c *gin.Context) {
 		response.HandleError(c, err)
 		return
 	}
+	if shifts == nil {
+		shifts = []model.WorkShift{}
+	}
 	response.Success(c, shifts)
 }
 
@@ -186,6 +189,9 @@ func (h *WorkShiftHandler) GetPayroll(c *gin.Context) {
 	if err != nil {
 		response.HandleError(c, err)
 		return
+	}
+	if payroll == nil {
+		payroll = []model.MonthlyPayroll{}
 	}
 	response.Success(c, payroll)
 }

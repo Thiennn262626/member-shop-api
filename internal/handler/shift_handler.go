@@ -116,5 +116,8 @@ func (h *ShiftHandler) GetHistory(c *gin.Context) {
 		response.HandleError(c, err)
 		return
 	}
+	if history == nil {
+		history = []model.CashShift{}
+	}
 	response.Success(c, history)
 }

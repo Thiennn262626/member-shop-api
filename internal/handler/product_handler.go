@@ -38,6 +38,9 @@ func (h *ProductHandler) GetProducts(c *gin.Context) {
 		response.HandleError(c, err)
 		return
 	}
+	if products == nil {
+		products = []model.Product{}
+	}
 	response.Success(c, products)
 }
 

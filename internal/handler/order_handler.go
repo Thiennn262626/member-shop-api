@@ -92,6 +92,9 @@ func (h *OrderHandler) TrackOrders(c *gin.Context) {
 			response.HandleError(c, err)
 			return
 		}
+		if orders == nil {
+			orders = []model.Order{}
+		}
 		response.Success(c, orders)
 		return
 	}
@@ -119,6 +122,9 @@ func (h *OrderHandler) GetOrders(c *gin.Context) {
 	if err != nil {
 		response.HandleError(c, err)
 		return
+	}
+	if orders == nil {
+		orders = []model.Order{}
 	}
 
 	page := int(offset/limit) + 1

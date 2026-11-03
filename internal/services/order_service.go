@@ -285,18 +285,16 @@ func (s *orderService) CreatePosOrder(ctx context.Context, req dto.CreatePosOrde
 		PaymentStatus:            paymentStatus,
 		PaymentMethod:            req.PaymentMethod,
 		ShipperInfo:              req.ShipperInfo,
-		Timeline: model.OrderTimeline{
-			CreatedAt: now,
-		},
+		CreatedAt:                now,
 	}
 	if status == model.OrderStatusConfirmed || status == model.OrderStatusCompleted {
-		newOrder.Timeline.ConfirmedAt = &now
+		newOrder.ConfirmedAt = &now
 	}
 	if paymentStatus == model.PaymentStatusPaid {
-		newOrder.Timeline.PaidAt = &now
+		newOrder.PaidAt = &now
 	}
 	if status == model.OrderStatusCompleted {
-		newOrder.Timeline.CompletedAt = &now
+		newOrder.CompletedAt = &now
 	}
 
 	if err := s.orderRepo.Create(ctx, newOrder); err != nil {
@@ -370,7 +368,7 @@ func (s *orderService) UpdateOrderStatus(ctx context.Context, orderID bson.Objec
 	if req.PaymentStatus != nil {
 		updates["paymentStatus"] = *req.PaymentStatus
 		if *req.PaymentStatus == model.PaymentStatusPaid {
-			updates["timeline.paidAt"] = now
+			updates["paidAt"] = now
 		}
 	}
 
@@ -379,16 +377,16 @@ func (s *orderService) UpdateOrderStatus(ctx context.Context, orderID bson.Objec
 		updates["status"] = *req.Status
 		switch *req.Status {
 		case model.OrderStatusConfirmed:
-			updates["timeline.confirmedAt"] = now
+			updates["confirmedAt"] = now
 		case model.OrderStatusShipping:
-			updates["timeline.shippingAt"] = now
+			updates["shippingAt"] = now
 		case model.OrderStatusCompleted:
-			updates["timeline.completedAt"] = now
+			updates["completedAt"] = now
 			if existing.Status != model.OrderStatusCompleted {
 				statusChangedToCompleted = true
 			}
 		case model.OrderStatusCancelled:
-			updates["timeline.cancelledAt"] = now
+			updates["cancelledAt"] = now
 		}
 	}
 

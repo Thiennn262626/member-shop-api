@@ -31,12 +31,12 @@ func EnsureIndexes(ctx context.Context, database *mongo.Database) error {
 			Keys: bson.D{{Key: "status", Value: 1}},
 		},
 		{
-			Keys: bson.D{{Key: "timeline.createdAt", Value: -1}},
+			Keys: bson.D{{Key: "createdAt", Value: -1}},
 		},
 		{
 			Keys: bson.D{
 				{Key: "status", Value: 1},
-				{Key: "timeline.createdAt", Value: -1},
+				{Key: "createdAt", Value: -1},
 			},
 		},
 	})

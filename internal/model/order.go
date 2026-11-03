@@ -35,15 +35,6 @@ type OrderItem struct {
 	PointsCost           int64         `json:"pointsCost,omitempty" bson:"pointsCost,omitempty"`
 }
 
-type OrderTimeline struct {
-	CreatedAt   time.Time  `json:"createdAt" bson:"createdAt"`
-	ConfirmedAt *time.Time `json:"confirmedAt,omitempty" bson:"confirmedAt,omitempty"`
-	PaidAt      *time.Time `json:"paidAt,omitempty" bson:"paidAt,omitempty"`
-	ShippingAt  *time.Time `json:"shippingAt,omitempty" bson:"shippingAt,omitempty"`
-	CompletedAt *time.Time `json:"completedAt,omitempty" bson:"completedAt,omitempty"`
-	CancelledAt *time.Time `json:"cancelledAt,omitempty" bson:"cancelledAt,omitempty"`
-}
-
 type Order struct {
 	ID                       bson.ObjectID `json:"id" bson:"_id,omitempty"`
 	OrderCode                string        `json:"orderCode" bson:"orderCode"` // #BS-xxxx or #POS-xxxx
@@ -55,7 +46,7 @@ type Order struct {
 	SubTotal                 int64         `json:"subTotal" bson:"subTotal"`
 	DiscountPointsUsed       int64         `json:"discountPointsUsed" bson:"discountPointsUsed"`
 	DiscountAmount           int64         `json:"discountAmount" bson:"discountAmount"`
-	TotalPointsRedeemedItems int64         `json:"totalPointsRedeemedItems" bson:"totalPointsRedeemedItems"`
+	TotalPointsRedeemedItems int64         `json:"totalPointsRedeemedItems,omitempty" bson:"totalPointsRedeemedItems,omitempty"`
 
 	FulfillmentType       string     `json:"fulfillmentType" bson:"fulfillmentType"` // 'delivery' | 'pickup'
 	DeliveryAddress       string     `json:"deliveryAddress,omitempty" bson:"deliveryAddress,omitempty"`
@@ -64,15 +55,21 @@ type Order struct {
 	ShippingFee           int64      `json:"shippingFee" bson:"shippingFee"`
 
 	VoucherCode     string `json:"voucherCode,omitempty" bson:"voucherCode,omitempty"`
-	VoucherDiscount int64  `json:"voucherDiscount" bson:"voucherDiscount"`
+	VoucherDiscount int64  `json:"voucherDiscount,omitempty" bson:"voucherDiscount,omitempty"`
 
-	OrderTotal   int64         `json:"orderTotal" bson:"orderTotal"`
-	EarnedPoints int64         `json:"earnedPoints" bson:"earnedPoints"`
-	Note         string        `json:"note,omitempty" bson:"note,omitempty"`
-	Status       OrderStatus   `json:"status" bson:"status"`
+	OrderTotal    int64         `json:"orderTotal" bson:"orderTotal"`
+	EarnedPoints  int64         `json:"earnedPoints" bson:"earnedPoints"`
+	Note          string        `json:"note,omitempty" bson:"note,omitempty"`
+	Status        OrderStatus   `json:"status" bson:"status"`
 	PaymentStatus PaymentStatus `json:"paymentStatus" bson:"paymentStatus"`
 	PaymentMethod string        `json:"paymentMethod,omitempty" bson:"paymentMethod,omitempty"` // 'cash' | 'vietqr'
 	ShipperInfo   string        `json:"shipperInfo,omitempty" bson:"shipperInfo,omitempty"`
 
-	Timeline OrderTimeline `json:"timeline" bson:"timeline"`
+	// Mốc thời gian các giai đoạn trực tiếp (phẳng), khớp chuẩn với giao diện Frontend
+	CreatedAt   time.Time  `json:"createdAt" bson:"createdAt"`
+	ConfirmedAt *time.Time `json:"confirmedAt,omitempty" bson:"confirmedAt,omitempty"`
+	PaidAt      *time.Time `json:"paidAt,omitempty" bson:"paidAt,omitempty"`
+	ShippingAt  *time.Time `json:"shippingAt,omitempty" bson:"shippingAt,omitempty"`
+	CompletedAt *time.Time `json:"completedAt,omitempty" bson:"completedAt,omitempty"`
+	CancelledAt *time.Time `json:"cancelledAt,omitempty" bson:"cancelledAt,omitempty"`
 }

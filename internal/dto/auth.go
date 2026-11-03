@@ -7,21 +7,23 @@ type LoginRequest struct {
 	PIN      string `json:"pin" binding:"required"`
 }
 
+type AdminUserResponse struct {
+	ID        string `json:"id"`
+	Username  string `json:"username"`
+	Name      string `json:"name"`
+	Role      string `json:"role"`
+	RoleTitle string `json:"roleTitle"`
+	Shift     string `json:"shift,omitempty"`
+}
+
 type LoginResponse struct {
-	AccessToken string `json:"accessToken"`
-	Token       string `json:"token"`
-	ExpiresIn   int    `json:"expiresIn"` // Thời gian sống tính bằng giây (ví dụ: 900s = 15m)
-	User        struct {
-		ID       string `json:"id"`
-		Username string `json:"username"`
-		Name     string `json:"name"`
-		Role     string `json:"role"`
-	} `json:"user"`
+	AccessToken string            `json:"accessToken"`
+	ExpiresIn   int               `json:"expiresIn"` // Thời gian sống tính bằng giây (ví dụ: 900s = 15m)
+	User        AdminUserResponse `json:"user"`
 }
 
 type RefreshResponse struct {
 	AccessToken string `json:"accessToken"`
-	Token       string `json:"token"`
 	ExpiresIn   int    `json:"expiresIn"`
 }
 

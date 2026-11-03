@@ -4,6 +4,7 @@ import (
 	"context"
 	"member-shop-api/internal/config"
 	"member-shop-api/internal/dto"
+	"member-shop-api/internal/model"
 	"member-shop-api/internal/repository"
 	"member-shop-api/pkg/apperror"
 	"member-shop-api/pkg/authjwt"
@@ -97,15 +98,23 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 		return nil, "", apperror.Internal(err, "Không thể lưu phiên đăng nhập")
 	}
 
+	roleTitle := "Thu Ngân Ca Trực"
+	if staff.Role == model.RoleOwner {
+		roleTitle = "Chủ Tiệm (Toàn Quyền)"
+	}
+
 	res := &dto.LoginResponse{
 		AccessToken: accessToken,
-		Token:       accessToken,
 		ExpiresIn:   s.cfg.AccessTokenExpires,
+		User: dto.AdminUserResponse{
+			ID:        staff.ID.Hex(),
+			Username:  staff.Username,
+			Name:      staff.Name,
+			Role:      string(staff.Role),
+			RoleTitle: roleTitle,
+			Shift:     staff.Shift,
+		},
 	}
-	res.User.ID = staff.ID.Hex()
-	res.User.Username = staff.Username
-	res.User.Name = staff.Name
-	res.User.Role = string(staff.Role)
 
 	// Trả về response JSON và chuỗi refreshToken riêng để Handler set vào HTTP-Only Cookie
 	return res, refreshToken, nil
@@ -167,7 +176,6 @@ func (s *authService) RefreshToken(ctx context.Context, oldRefreshToken string) 
 
 	res := &dto.RefreshResponse{
 		AccessToken: newAccessToken,
-		Token:       newAccessToken,
 		ExpiresIn:   s.cfg.AccessTokenExpires,
 	}
 

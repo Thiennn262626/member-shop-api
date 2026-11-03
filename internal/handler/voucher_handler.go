@@ -103,6 +103,9 @@ func (h *VoucherHandler) GetAll(c *gin.Context) {
 		response.HandleError(c, err)
 		return
 	}
+	if list == nil {
+		list = []model.Voucher{}
+	}
 	response.Success(c, list)
 }
 
