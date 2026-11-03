@@ -65,9 +65,11 @@
                 "exec": [
                   "if (pm.response.code === 200) {",
                   "    var json = pm.response.json();",
-                  "    if (json.accessToken) {",
-                  "        pm.collectionVariables.set(\"token\", json.accessToken);",
-                  "        console.log(\"Saved JWT Access Token:\", json.accessToken);",
+                  "    var data = json.data || json;",
+                  "    var t = data.token || data.accessToken;",
+                  "    if (t) {",
+                  "        pm.collectionVariables.set(\"token\", t);",
+                  "        console.log(\"Saved JWT Access Token:\", t);",
                   "    }",
                   "}"
                 ],
@@ -322,8 +324,9 @@
                 "exec": [
                   "if (pm.response.code === 201) {",
                   "    var json = pm.response.json();",
-                  "    if (json.order && json.order.id) {",
-                  "        pm.collectionVariables.set(\"orderId\", json.order.id);",
+                  "    var data = json.data || json;",
+                  "    if (data.order && data.order.id) {",
+                  "        pm.collectionVariables.set(\"orderId\", data.order.id);",
                   "    }",
                   "}"
                 ],
@@ -499,8 +502,9 @@
                 "exec": [
                   "if (pm.response.code === 201) {",
                   "    var json = pm.response.json();",
-                  "    if (json.id) {",
-                  "        pm.collectionVariables.set(\"shiftId\", json.id);",
+                  "    var data = json.data || json;",
+                  "    if (data.id) {",
+                  "        pm.collectionVariables.set(\"shiftId\", data.id);",
                   "    }",
                   "}"
                 ],
