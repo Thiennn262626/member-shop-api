@@ -93,7 +93,7 @@ func (h *ProductHandler) GetProducts(c *gin.Context) {
 		ttl = 5 * time.Minute
 	}
 
-	products, err := cache.CacheAside(c.Request.Context(), h.cache, cacheKey, ttl, func() ([]model.Product, error) {
+	products, isHit, err := cache.CacheAsideWithStatus(c.Request.Context(), h.cache, cacheKey, ttl, func() ([]model.Product, error) {
 		return h.repo.GetAll(c.Request.Context(), onlyActive)
 	})
 	if err != nil {
@@ -103,6 +103,13 @@ func (h *ProductHandler) GetProducts(c *gin.Context) {
 	if products == nil {
 		products = []model.Product{}
 	}
+
+	if isHit {
+		c.Header("X-Cache", "HIT")
+	} else {
+		c.Header("X-Cache", "MISS")
+	}
+	c.Header("X-Cache-Key", cacheKey)
 
 	if onlyActive {
 		c.Header("Cache-Control", "public, max-age=60, stale-while-revalidate=120")

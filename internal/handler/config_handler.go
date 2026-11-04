@@ -23,13 +23,20 @@ func NewConfigHandler(repo repository.ConfigRepository, cacheSvc cache.RedisCach
 
 func (h *ConfigHandler) GetConfig(c *gin.Context) {
 	// Cache-Aside: Cấu hình cửa hàng đọc từ Cache (TTL: 1 giờ)
-	cfg, err := cache.CacheAside(c.Request.Context(), h.cache, cache.KeyShopConfig, 1*time.Hour, func() (*model.ShopConfig, error) {
+	cfg, isHit, err := cache.CacheAsideWithStatus(c.Request.Context(), h.cache, cache.KeyShopConfig, 1*time.Hour, func() (*model.ShopConfig, error) {
 		return h.repo.GetConfig(c.Request.Context())
 	})
 	if err != nil {
 		response.HandleError(c, err)
 		return
 	}
+
+	if isHit {
+		c.Header("X-Cache", "HIT")
+	} else {
+		c.Header("X-Cache", "MISS")
+	}
+	c.Header("X-Cache-Key", cache.KeyShopConfig)
 
 	// Tối ưu hiệu năng HTTP Cache cho cấu hình cửa hàng (5 phút browser cache + 10 phút stale-while-revalidate)
 	c.Header("Cache-Control", "public, max-age=300, stale-while-revalidate=600")

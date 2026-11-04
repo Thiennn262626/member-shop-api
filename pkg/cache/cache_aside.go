@@ -44,24 +44,36 @@ func CacheAside[T any](
 	ttl time.Duration,
 	queryDB func() (T, error),
 ) (T, error) {
+	data, _, err := CacheAsideWithStatus(ctx, c, key, ttl, queryDB)
+	return data, err
+}
+
+// CacheAsideWithStatus tương tự CacheAside nhưng trả về thêm cờ isHit (true nếu lấy từ Redis, false nếu miss từ DB).
+func CacheAsideWithStatus[T any](
+	ctx context.Context,
+	c RedisCacheService,
+	key string,
+	ttl time.Duration,
+	queryDB func() (T, error),
+) (T, bool, error) {
 	if c != nil {
 		var cached T
 		if err := c.Get(ctx, key, &cached); err == nil {
-			return cached, nil
+			return cached, true, nil
 		}
 	}
 
 	data, err := queryDB()
 	if err != nil {
 		var zero T
-		return zero, err
+		return zero, false, err
 	}
 
 	if c != nil {
 		_ = c.Set(ctx, key, data, ttl)
 	}
 
-	return data, nil
+	return data, false, nil
 }
 
 // Invalidate xóa một hoặc nhiều khóa cache khi dữ liệu bị thay đổi (Mutation: Create / Update / Delete).

@@ -52,7 +52,7 @@ func (h *CustomerHandler) LookupByPhone(c *gin.Context) {
 
 	// Cache-Aside: Tra cứu hội viên theo số điện thoại (TTL: 3 phút)
 	cacheKey := cache.KeyCustomerPhonePrefix + phone
-	result, err := cache.CacheAside(c.Request.Context(), h.cache, cacheKey, 3*time.Minute, func() (*CustomerLookupResult, error) {
+	result, isHit, err := cache.CacheAsideWithStatus(c.Request.Context(), h.cache, cacheKey, 3*time.Minute, func() (*CustomerLookupResult, error) {
 		cust, err := h.custRepo.FindByPhone(c.Request.Context(), phone)
 		if err != nil {
 			return nil, err
@@ -84,6 +84,13 @@ func (h *CustomerHandler) LookupByPhone(c *gin.Context) {
 		response.FailWithStatus(c, http.StatusNotFound, apperror.CodeCustomerNotFound, "Chưa có thông tin hội viên cho số điện thoại này")
 		return
 	}
+
+	if isHit {
+		c.Header("X-Cache", "HIT")
+	} else {
+		c.Header("X-Cache", "MISS")
+	}
+	c.Header("X-Cache-Key", cacheKey)
 
 	// Bảo vệ dữ liệu cá nhân (SEC-04): Mask PII trên endpoint public chống crawler/scrapers
 	maskedCust := *result.Customer

@@ -72,7 +72,7 @@ func (h *OrderHandler) TrackOrders(c *gin.Context) {
 
 	if code != "" {
 		cacheKey := "shop:order:code:" + code
-		order, err := cache.CacheAside(c.Request.Context(), h.cache, cacheKey, 1*time.Minute, func() (*model.Order, error) {
+		order, isHit, err := cache.CacheAsideWithStatus(c.Request.Context(), h.cache, cacheKey, 1*time.Minute, func() (*model.Order, error) {
 			return h.orderRepo.GetByCode(c.Request.Context(), code)
 		})
 		if err != nil {
@@ -83,6 +83,13 @@ func (h *OrderHandler) TrackOrders(c *gin.Context) {
 			response.FailWithStatus(c, http.StatusNotFound, apperror.CodeOrderNotFound, "Không tìm thấy đơn hàng với mã yêu cầu")
 			return
 		}
+
+		if isHit {
+			c.Header("X-Cache", "HIT")
+		} else {
+			c.Header("X-Cache", "MISS")
+		}
+		c.Header("X-Cache-Key", cacheKey)
 
 		// Bảo vệ dữ liệu cá nhân (SEC-04): Nếu không xác thực được số điện thoại đặt hàng, mask PII
 		resOrder := *order
