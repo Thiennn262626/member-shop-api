@@ -88,6 +88,9 @@ func NewApplication(cfg *config.Config) (*Application, error) {
 	// 6. Đăng ký toàn bộ Middlewares & Routes qua hàm routes.RegisterRoutes
 	routes.RegisterRoutes(engine, getModuleRoutes(modules)...)
 
+	// 7. Seed dữ liệu khởi tạo nếu database trống (Sản phẩm, Voucher, Hội viên mẫu)
+	SeedInitialData(mc)
+
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,
 		Handler: engine,
