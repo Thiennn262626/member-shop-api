@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"member-shop-api/internal/dto"
 	"member-shop-api/internal/model"
@@ -108,10 +109,30 @@ func (h *ShiftHandler) CloseShift(c *gin.Context) {
 }
 
 func (h *ShiftHandler) GetHistory(c *gin.Context) {
-	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "20"), 10, 64)
-	offset, _ := strconv.ParseInt(c.DefaultQuery("offset", "0"), 10, 64)
+	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 64)
+	if page < 1 {
+		page = 1
+	}
 
-	history, err := h.repo.GetHistory(c.Request.Context(), limit, offset)
+	limit, _ := strconv.ParseInt(c.DefaultQuery("pageSize", c.DefaultQuery("limit", "20")), 10, 64)
+	if limit <= 0 {
+		limit = 20
+	} else if limit > 200 {
+		limit = 200
+	}
+
+	var offset int64
+	if offsetStr := c.Query("offset"); offsetStr != "" {
+		offset, _ = strconv.ParseInt(offsetStr, 10, 64)
+		if offset < 0 {
+			offset = 0
+		}
+		page = (offset / limit) + 1
+	} else {
+		offset = (page - 1) * limit
+	}
+
+	history, total, err := h.repo.GetHistory(c.Request.Context(), limit, offset)
 	if err != nil {
 		response.HandleError(c, err)
 		return
@@ -119,5 +140,16 @@ func (h *ShiftHandler) GetHistory(c *gin.Context) {
 	if history == nil {
 		history = []model.CashShift{}
 	}
-	response.Success(c, history)
+
+	totalPages := int(math.Ceil(float64(total) / float64(limit)))
+	if totalPages == 0 && total == 0 {
+		totalPages = 1
+	}
+
+	response.SuccessWithMeta(c, history, &response.Meta{
+		Page:       int(page),
+		PageSize:   int(limit),
+		Total:      total,
+		TotalPages: totalPages,
+	})
 }

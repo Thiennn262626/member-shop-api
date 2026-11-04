@@ -124,10 +124,27 @@ func (h *OrderHandler) TrackOrders(c *gin.Context) {
 }
 
 func (h *OrderHandler) GetOrders(c *gin.Context) {
-	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "50"), 10, 64)
-	offset, _ := strconv.ParseInt(c.DefaultQuery("offset", "0"), 10, 64)
+	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 64)
+	if page < 1 {
+		page = 1
+	}
+
+	limit, _ := strconv.ParseInt(c.DefaultQuery("pageSize", c.DefaultQuery("limit", "50")), 10, 64)
 	if limit <= 0 {
 		limit = 50
+	} else if limit > 200 {
+		limit = 200
+	}
+
+	var offset int64
+	if offsetStr := c.Query("offset"); offsetStr != "" {
+		offset, _ = strconv.ParseInt(offsetStr, 10, 64)
+		if offset < 0 {
+			offset = 0
+		}
+		page = (offset / limit) + 1
+	} else {
+		offset = (page - 1) * limit
 	}
 
 	filter := repository.OrderFilter{
@@ -148,11 +165,13 @@ func (h *OrderHandler) GetOrders(c *gin.Context) {
 		orders = []model.Order{}
 	}
 
-	page := int(offset/limit) + 1
 	totalPages := int(math.Ceil(float64(total) / float64(limit)))
+	if totalPages == 0 && total == 0 {
+		totalPages = 1
+	}
 
 	response.SuccessWithMeta(c, orders, &response.Meta{
-		Page:       page,
+		Page:       int(page),
 		PageSize:   int(limit),
 		Total:      total,
 		TotalPages: totalPages,

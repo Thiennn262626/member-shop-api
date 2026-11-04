@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"math"
 	"member-shop-api/internal/config"
 	"member-shop-api/internal/dto"
 	"member-shop-api/internal/model"
@@ -9,6 +10,7 @@ import (
 	"member-shop-api/pkg/apperror"
 	"member-shop-api/pkg/response"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -163,6 +165,62 @@ func (h *AuthHandler) GetMe(c *gin.Context) {
 }
 
 func (h *AuthHandler) GetAllStaff(c *gin.Context) {
+	hasPagination := c.Query("page") != "" || c.Query("pageSize") != "" || c.Query("limit") != "" || c.Query("search") != "" || c.Query("role") != ""
+
+	if hasPagination {
+		page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 64)
+		if page < 1 {
+			page = 1
+		}
+
+		limit, _ := strconv.ParseInt(c.DefaultQuery("pageSize", c.DefaultQuery("limit", "20")), 10, 64)
+		if limit <= 0 {
+			limit = 20
+		} else if limit > 200 {
+			limit = 200
+		}
+
+		var offset int64
+		if offsetStr := c.Query("offset"); offsetStr != "" {
+			offset, _ = strconv.ParseInt(offsetStr, 10, 64)
+			if offset < 0 {
+				offset = 0
+			}
+			page = (offset / limit) + 1
+		} else {
+			offset = (page - 1) * limit
+		}
+
+		filter := repository.StaffFilter{
+			Search: c.Query("search"),
+			Role:   c.Query("role"),
+			Limit:  limit,
+			Offset: offset,
+		}
+
+		list, total, err := h.staffRepo.GetList(c.Request.Context(), filter)
+		if err != nil {
+			response.HandleError(c, err)
+			return
+		}
+		if list == nil {
+			list = []model.StaffAccount{}
+		}
+
+		totalPages := int(math.Ceil(float64(total) / float64(limit)))
+		if totalPages == 0 && total == 0 {
+			totalPages = 1
+		}
+
+		response.SuccessWithMeta(c, list, &response.Meta{
+			Page:       int(page),
+			PageSize:   int(limit),
+			Total:      total,
+			TotalPages: totalPages,
+		})
+		return
+	}
+
 	list, err := h.staffRepo.GetAll(c.Request.Context())
 	if err != nil {
 		response.HandleError(c, err)
@@ -171,7 +229,14 @@ func (h *AuthHandler) GetAllStaff(c *gin.Context) {
 	if list == nil {
 		list = []model.StaffAccount{}
 	}
-	response.Success(c, list)
+
+	total := int64(len(list))
+	response.SuccessWithMeta(c, list, &response.Meta{
+		Page:       1,
+		PageSize:   int(total),
+		Total:      total,
+		TotalPages: 1,
+	})
 }
 
 func (h *AuthHandler) CreateStaff(c *gin.Context) {

@@ -17,7 +17,7 @@ type ShiftRepository interface {
 	Create(ctx context.Context, shift *model.CashShift) error
 	Close(ctx context.Context, id bson.ObjectID, actualCash int64, notes, nextStaff string) (*model.CashShift, error)
 	RecordSale(ctx context.Context, amount int64, paymentMethod string) error
-	GetHistory(ctx context.Context, limit, offset int64) ([]model.CashShift, error)
+	GetHistory(ctx context.Context, limit, offset int64) ([]model.CashShift, int64, error)
 }
 
 type shiftRepo struct {
@@ -111,7 +111,12 @@ func (r *shiftRepo) RecordSale(ctx context.Context, amount int64, paymentMethod 
 	return err
 }
 
-func (r *shiftRepo) GetHistory(ctx context.Context, limit, offset int64) ([]model.CashShift, error) {
+func (r *shiftRepo) GetHistory(ctx context.Context, limit, offset int64) ([]model.CashShift, int64, error) {
+	total, err := r.coll.CountDocuments(ctx, bson.M{})
+	if err != nil {
+		return nil, 0, err
+	}
+
 	opts := options.Find().SetSort(bson.D{{Key: "openedAt", Value: -1}})
 	if limit > 0 {
 		opts.SetLimit(limit)
@@ -121,13 +126,13 @@ func (r *shiftRepo) GetHistory(ctx context.Context, limit, offset int64) ([]mode
 	}
 	cursor, err := r.coll.Find(ctx, bson.M{}, opts)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer cursor.Close(ctx)
 
 	var list []model.CashShift
 	if err := cursor.All(ctx, &list); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return list, nil
+	return list, total, nil
 }

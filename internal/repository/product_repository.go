@@ -10,8 +10,17 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
+type ProductFilter struct {
+	Category   string
+	Search     string
+	OnlyActive bool
+	Limit      int64
+	Offset     int64
+}
+
 type ProductRepository interface {
 	GetAll(ctx context.Context, onlyActive bool) ([]model.Product, error)
+	GetList(ctx context.Context, filter ProductFilter) ([]model.Product, int64, error)
 	GetByID(ctx context.Context, id bson.ObjectID) (*model.Product, error)
 	Create(ctx context.Context, p *model.Product) error
 	Update(ctx context.Context, id bson.ObjectID, updates bson.M) (*model.Product, error)
@@ -48,6 +57,47 @@ func (r *productRepo) GetAll(ctx context.Context, onlyActive bool) ([]model.Prod
 		return nil, err
 	}
 	return products, nil
+}
+
+func (r *productRepo) GetList(ctx context.Context, filter ProductFilter) ([]model.Product, int64, error) {
+	cond := bson.M{}
+	if filter.OnlyActive {
+		cond["isActive"] = true
+	}
+	if filter.Category != "" && filter.Category != "ALL" {
+		cond["category"] = filter.Category
+	}
+	if filter.Search != "" {
+		cond["$or"] = []bson.M{
+			{"name": bson.M{"$regex": filter.Search, "$options": "i"}},
+			{"description": bson.M{"$regex": filter.Search, "$options": "i"}},
+		}
+	}
+
+	total, err := r.coll.CountDocuments(ctx, cond)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	opts := options.Find().SetSort(bson.D{{Key: "soldCount", Value: -1}, {Key: "createdAt", Value: -1}})
+	if filter.Limit > 0 {
+		opts.SetLimit(filter.Limit)
+	}
+	if filter.Offset > 0 {
+		opts.SetSkip(filter.Offset)
+	}
+
+	cursor, err := r.coll.Find(ctx, cond, opts)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cursor.Close(ctx)
+
+	var products []model.Product
+	if err := cursor.All(ctx, &products); err != nil {
+		return nil, 0, err
+	}
+	return products, total, nil
 }
 
 func (r *productRepo) GetByID(ctx context.Context, id bson.ObjectID) (*model.Product, error) {

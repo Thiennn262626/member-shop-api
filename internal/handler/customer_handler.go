@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"math"
 	"member-shop-api/internal/model"
 	"member-shop-api/internal/repository"
 	"member-shop-api/internal/utils"
@@ -8,6 +9,7 @@ import (
 	"member-shop-api/pkg/cache"
 	"member-shop-api/pkg/response"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -112,7 +114,37 @@ func (h *CustomerHandler) LookupByPhone(c *gin.Context) {
 }
 
 func (h *CustomerHandler) GetCustomers(c *gin.Context) {
-	list, err := h.custRepo.GetAll(c.Request.Context())
+	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 64)
+	if page < 1 {
+		page = 1
+	}
+
+	limit, _ := strconv.ParseInt(c.DefaultQuery("pageSize", c.DefaultQuery("limit", "50")), 10, 64)
+	if limit <= 0 {
+		limit = 50
+	} else if limit > 200 {
+		limit = 200
+	}
+
+	var offset int64
+	if offsetStr := c.Query("offset"); offsetStr != "" {
+		offset, _ = strconv.ParseInt(offsetStr, 10, 64)
+		if offset < 0 {
+			offset = 0
+		}
+		page = (offset / limit) + 1
+	} else {
+		offset = (page - 1) * limit
+	}
+
+	filter := repository.CustomerFilter{
+		Search: c.Query("search"),
+		Tier:   c.Query("tier"),
+		Limit:  limit,
+		Offset: offset,
+	}
+
+	list, total, err := h.custRepo.GetList(c.Request.Context(), filter)
 	if err != nil {
 		response.HandleError(c, err)
 		return
@@ -120,7 +152,18 @@ func (h *CustomerHandler) GetCustomers(c *gin.Context) {
 	if list == nil {
 		list = []model.Customer{}
 	}
-	response.Success(c, list)
+
+	totalPages := int(math.Ceil(float64(total) / float64(limit)))
+	if totalPages == 0 && total == 0 {
+		totalPages = 1
+	}
+
+	response.SuccessWithMeta(c, list, &response.Meta{
+		Page:       int(page),
+		PageSize:   int(limit),
+		Total:      total,
+		TotalPages: totalPages,
+	})
 }
 
 func (h *CustomerHandler) AdjustPoints(c *gin.Context) {

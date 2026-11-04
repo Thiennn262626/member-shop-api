@@ -11,10 +11,18 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
+type CustomerFilter struct {
+	Search string
+	Tier   string
+	Limit  int64
+	Offset int64
+}
+
 type CustomerRepository interface {
 	FindByPhone(ctx context.Context, phone string) (*model.Customer, error)
 	FindByID(ctx context.Context, id bson.ObjectID) (*model.Customer, error)
 	GetAll(ctx context.Context) ([]model.Customer, error)
+	GetList(ctx context.Context, filter CustomerFilter) ([]model.Customer, int64, error)
 	CreateOrGet(ctx context.Context, name, phone string) (*model.Customer, error)
 	Update(ctx context.Context, id bson.ObjectID, updates bson.M) (*model.Customer, error)
 	AdjustPoints(ctx context.Context, id bson.ObjectID, delta int64) (*model.Customer, error)
@@ -66,6 +74,44 @@ func (r *customerRepo) GetAll(ctx context.Context) ([]model.Customer, error) {
 		return nil, err
 	}
 	return list, nil
+}
+
+func (r *customerRepo) GetList(ctx context.Context, filter CustomerFilter) ([]model.Customer, int64, error) {
+	cond := bson.M{}
+	if filter.Tier != "" && filter.Tier != "ALL" {
+		cond["tier"] = filter.Tier
+	}
+	if filter.Search != "" {
+		cond["$or"] = []bson.M{
+			{"name": bson.M{"$regex": filter.Search, "$options": "i"}},
+			{"phone": bson.M{"$regex": filter.Search, "$options": "i"}},
+		}
+	}
+
+	total, err := r.coll.CountDocuments(ctx, cond)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	opts := options.Find().SetSort(bson.D{{Key: "totalSpent", Value: -1}, {Key: "createdAt", Value: -1}})
+	if filter.Limit > 0 {
+		opts.SetLimit(filter.Limit)
+	}
+	if filter.Offset > 0 {
+		opts.SetSkip(filter.Offset)
+	}
+
+	cursor, err := r.coll.Find(ctx, cond, opts)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cursor.Close(ctx)
+
+	var list []model.Customer
+	if err := cursor.All(ctx, &list); err != nil {
+		return nil, 0, err
+	}
+	return list, total, nil
 }
 
 func (r *customerRepo) CreateOrGet(ctx context.Context, name, phone string) (*model.Customer, error) {
