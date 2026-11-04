@@ -199,7 +199,7 @@ func (s *orderService) CreateWebOrder(ctx context.Context, req dto.CreateOrderRe
 	multiplier := model.GetTierMultiplier(customer.Tier)
 	earnedPoints := int64(float64(orderTotal/config.SpendToPointRatio) * multiplier)
 
-	orderCode := fmt.Sprintf("#BS-%04d", rand.Intn(9000)+1000)
+	orderCode := fmt.Sprintf("#CH-%04d", rand.Intn(9000)+1000)
 
 	newOrder := &model.Order{
 		OrderCode:                orderCode,
