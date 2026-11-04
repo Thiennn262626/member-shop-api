@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: member-shop-api
+    runtime: docker
+    plan: free
+    region: singapore # Chọn Singapore để tốc độ về Việt Nam nhanh nhất (< 30ms)
+    healthCheckPath: /v1/config
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false # Nhập chuỗi kết nối MongoDB Atlas của bạn trên Render Dashboard
+      - key: MONGODB_DATABASE
+        value: member-shop
+      - key: JWT_SECRET_ACCESS
+        generateValue: true
+      - key: JWT_SECRET_REFRESH
+        generateValue: true
+      - key: ALLOWED_ORIGINS
+        value: https://member-shop-ui.vercel.app,http://localhost:5173

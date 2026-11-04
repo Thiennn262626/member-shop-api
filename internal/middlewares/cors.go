@@ -2,6 +2,7 @@ package middlewares
 
 import (
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 
@@ -24,6 +25,15 @@ var (
 func isAllowedOrigin(origin string) bool {
 	if exactOrigins[origin] {
 		return true
+	}
+	// Cho phép thêm origin qua biến môi trường ALLOWED_ORIGINS (phân cách bằng dấu phẩy)
+	customOrigins := os.Getenv("ALLOWED_ORIGINS")
+	if customOrigins != "" {
+		for _, o := range strings.Split(customOrigins, ",") {
+			if strings.TrimSpace(o) == origin {
+				return true
+			}
+		}
 	}
 	if strings.HasSuffix(origin, ".vercel.app") && vercelPreviewRegex.MatchString(origin) {
 		return true
