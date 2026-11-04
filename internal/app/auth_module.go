@@ -51,7 +51,21 @@ func seedDefaultAdmin(staffRepo repository.StaffRepository) {
 			HourlyRate: 50000,
 			IsActive:   true,
 		}
-		_ = newAdmin.SetPIN("1234")
+		_ = newAdmin.SetPIN("123456")
 		_ = staffRepo.Create(ctx, newAdmin)
+	}
+
+	thungan, _ := staffRepo.FindByUsername(ctx, "thungan")
+	if thungan == nil {
+		newCashier := &model.StaffAccount{
+			Username:   "thungan",
+			Name:       "Trần Thu Ngân",
+			Role:       model.RoleCashier,
+			Shift:      "Ca Sáng (06:30 - 14:30)",
+			HourlyRate: 28000,
+			IsActive:   true,
+		}
+		_ = newCashier.SetPIN("123456")
+		_ = staffRepo.Create(ctx, newCashier)
 	}
 }
