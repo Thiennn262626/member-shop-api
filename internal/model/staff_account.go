@@ -24,6 +24,7 @@ type StaffAccount struct {
 	HourlyRate int64         `json:"hourlyRate" bson:"hourlyRate"`
 	IsActive   bool          `json:"isActive" bson:"isActive"`
 	PINHash    string        `json:"-" bson:"pinHash"`
+	Version    int64         `json:"version" bson:"version"`
 	CreatedAt  time.Time     `json:"createdAt" bson:"createdAt"`
 }
 

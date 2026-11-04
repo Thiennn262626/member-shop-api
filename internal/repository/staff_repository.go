@@ -3,7 +3,10 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"member-shop-api/internal/model"
+	"member-shop-api/pkg/apperror"
+	"net/http"
 	"strings"
 	"time"
 
@@ -25,7 +28,7 @@ type StaffRepository interface {
 	GetAll(ctx context.Context) ([]model.StaffAccount, error)
 	GetList(ctx context.Context, filter StaffFilter) ([]model.StaffAccount, int64, error)
 	Create(ctx context.Context, s *model.StaffAccount) error
-	Update(ctx context.Context, id bson.ObjectID, updates bson.M) (*model.StaffAccount, error)
+	Update(ctx context.Context, id bson.ObjectID, updates bson.M, expectedVersion ...int64) (*model.StaffAccount, error)
 	ToggleStatus(ctx context.Context, id bson.ObjectID) (*model.StaffAccount, error)
 }
 
@@ -122,13 +125,39 @@ func (r *staffRepo) Create(ctx context.Context, s *model.StaffAccount) error {
 	return nil
 }
 
-func (r *staffRepo) Update(ctx context.Context, id bson.ObjectID, updates bson.M) (*model.StaffAccount, error) {
+func (r *staffRepo) Update(ctx context.Context, id bson.ObjectID, updates bson.M, expectedVersion ...int64) (*model.StaffAccount, error) {
+	delete(updates, "_id")
+	delete(updates, "id")
+	delete(updates, "version")
+
+	filter := bson.M{"_id": id}
+	hasVersionCheck := len(expectedVersion) > 0 && expectedVersion[0] >= 0
+	if hasVersionCheck {
+		expVer := expectedVersion[0]
+		filter["$or"] = []bson.M{
+			{"version": expVer},
+			{"version": bson.M{"$exists": false}},
+		}
+	}
+
+	updateDoc := bson.M{
+		"$set": updates,
+		"$inc": bson.M{"version": 1},
+	}
+
 	after := options.After
 	opts := options.FindOneAndUpdate().SetReturnDocument(after)
 
 	var updated model.StaffAccount
-	err := r.coll.FindOneAndUpdate(ctx, bson.M{"_id": id}, bson.M{"$set": updates}, opts).Decode(&updated)
+	err := r.coll.FindOneAndUpdate(ctx, filter, updateDoc, opts).Decode(&updated)
 	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			existing, checkErr := r.FindByID(ctx, id)
+			if checkErr == nil && existing != nil && hasVersionCheck {
+				return nil, apperror.VersionMismatch(fmt.Sprintf("Tài khoản '%s' đã được cập nhật bởi một thiết bị khác (phiên bản mới: %d). Hệ thống đang tải lại dữ liệu mới nhất.", existing.Name, existing.Version))
+			}
+			return nil, apperror.New(http.StatusNotFound, apperror.CodeStaffNotFound, "Không tìm thấy nhân viên này trên hệ thống")
+		}
 		return nil, err
 	}
 	return &updated, nil

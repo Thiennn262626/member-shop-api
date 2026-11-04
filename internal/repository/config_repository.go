@@ -3,7 +3,10 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"member-shop-api/internal/model"
+	"member-shop-api/pkg/apperror"
+	"net/http"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -12,7 +15,7 @@ import (
 
 type ConfigRepository interface {
 	GetConfig(ctx context.Context) (*model.ShopConfig, error)
-	UpdateConfig(ctx context.Context, updates bson.M) (*model.ShopConfig, error)
+	UpdateConfig(ctx context.Context, updates bson.M, expectedVersion ...int64) (*model.ShopConfig, error)
 }
 
 type configRepo struct {
@@ -63,11 +66,37 @@ func (r *configRepo) GetConfig(ctx context.Context) (*model.ShopConfig, error) {
 	return &cfg, nil
 }
 
-func (r *configRepo) UpdateConfig(ctx context.Context, updates bson.M) (*model.ShopConfig, error) {
-	opts := options.FindOneAndUpdate().SetReturnDocument(options.After).SetUpsert(true)
+func (r *configRepo) UpdateConfig(ctx context.Context, updates bson.M, expectedVersion ...int64) (*model.ShopConfig, error) {
+	delete(updates, "_id")
+	delete(updates, "id")
+	delete(updates, "version")
+
+	filter := bson.M{"_id": "current_config"}
+	hasVersionCheck := len(expectedVersion) > 0 && expectedVersion[0] >= 0
+	if hasVersionCheck {
+		expVer := expectedVersion[0]
+		filter["$or"] = []bson.M{
+			{"version": expVer},
+			{"version": bson.M{"$exists": false}},
+		}
+	}
+
+	updateDoc := bson.M{
+		"$set": updates,
+		"$inc": bson.M{"version": 1},
+	}
+
+	opts := options.FindOneAndUpdate().SetReturnDocument(options.After).SetUpsert(false)
 	var cfg model.ShopConfig
-	err := r.coll.FindOneAndUpdate(ctx, bson.M{"_id": "current_config"}, bson.M{"$set": updates}, opts).Decode(&cfg)
+	err := r.coll.FindOneAndUpdate(ctx, filter, updateDoc, opts).Decode(&cfg)
 	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			existing, checkErr := r.GetConfig(ctx)
+			if checkErr == nil && existing != nil && hasVersionCheck {
+				return nil, apperror.VersionMismatch(fmt.Sprintf("Cấu hình tiệm đã được cập nhật bởi một thiết bị khác (phiên bản mới: %d). Hệ thống đang tải lại dữ liệu mới nhất.", existing.Version))
+			}
+			return nil, apperror.New(http.StatusNotFound, apperror.CodeNotFound, "Không tìm thấy cấu hình tiệm")
+		}
 		return nil, err
 	}
 	return &cfg, nil

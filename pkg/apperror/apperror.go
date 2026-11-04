@@ -46,6 +46,7 @@ const (
 	CodeNotFound            = "NOT_FOUND"
 	CodeMethodNotAllowed    = "METHOD_NOT_ALLOWED"
 	CodeConflict            = "CONFLICT"
+	CodeVersionMismatch     = "VERSION_MISMATCH"
 	CodeTooManyRequests     = "TOO_MANY_REQUESTS"
 	CodeInternalServerError = "INTERNAL_SERVER_ERROR"
 
@@ -129,6 +130,14 @@ func NotFound(message string) *AppError {
 
 func Conflict(message string) *AppError {
 	return New(http.StatusConflict, CodeConflict, message)
+}
+
+func VersionMismatch(message ...string) *AppError {
+	msg := "Dữ liệu đã được cập nhật bởi một phiên làm việc khác. Vui lòng tải lại dữ liệu mới nhất để tiếp tục."
+	if len(message) > 0 && message[0] != "" {
+		msg = message[0]
+	}
+	return New(http.StatusConflict, CodeVersionMismatch, msg)
 }
 
 func Internal(err error, message ...string) *AppError {

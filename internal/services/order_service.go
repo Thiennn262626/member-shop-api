@@ -532,7 +532,12 @@ func (s *orderService) UpdateOrderStatus(ctx context.Context, orderID bson.Objec
 		}
 	}
 
-	updatedOrder, err := s.orderRepo.Update(ctx, orderID, updates)
+	var expectedVersion []int64
+	if req.Version != nil {
+		expectedVersion = append(expectedVersion, *req.Version)
+	}
+
+	updatedOrder, err := s.orderRepo.Update(ctx, orderID, updates, expectedVersion...)
 	if err != nil {
 		return nil, nil, err
 	}

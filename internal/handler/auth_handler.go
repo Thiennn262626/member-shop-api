@@ -290,6 +290,7 @@ func (h *AuthHandler) UpdateStaff(c *gin.Context) {
 		Shift      *string `json:"shift"`
 		HourlyRate *int64  `json:"hourlyRate"`
 		PIN        *string `json:"pin"`
+		Version    *int64  `json:"version"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.HandleValidationError(c, err)
@@ -318,7 +319,12 @@ func (h *AuthHandler) UpdateStaff(c *gin.Context) {
 		updates["pinHash"] = temp.PINHash
 	}
 
-	updated, err := h.staffRepo.Update(c.Request.Context(), id, updates)
+	var updated *model.StaffAccount
+	if req.Version != nil {
+		updated, err = h.staffRepo.Update(c.Request.Context(), id, updates, *req.Version)
+	} else {
+		updated, err = h.staffRepo.Update(c.Request.Context(), id, updates)
+	}
 	if err != nil {
 		response.HandleError(c, err)
 		return

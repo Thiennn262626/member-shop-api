@@ -51,4 +51,5 @@ type UpdateOrderStatusRequest struct {
 	PaymentStatus      *model.PaymentStatus `json:"paymentStatus,omitempty"`
 	ShipperInfo        *string              `json:"shipperInfo,omitempty"`
 	DiscountPointsUsed *int64               `json:"discountPointsUsed,omitempty"`
+	Version            *int64               `json:"version,omitempty"`
 }

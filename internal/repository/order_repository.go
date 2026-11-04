@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"member-shop-api/internal/model"
+	"member-shop-api/pkg/apperror"
 	"strings"
 	"time"
 
@@ -29,8 +30,8 @@ type OrderRepository interface {
 	GetByCode(ctx context.Context, code string) (*model.Order, error)
 	GetByPhone(ctx context.Context, phone string) ([]model.Order, error)
 	GetList(ctx context.Context, filter OrderFilter) ([]model.Order, int64, error)
-	Update(ctx context.Context, id bson.ObjectID, updates bson.M) (*model.Order, error)
-	UpdateStatus(ctx context.Context, id bson.ObjectID, status model.OrderStatus) (*model.Order, error)
+	Update(ctx context.Context, id bson.ObjectID, updates bson.M, expectedVersion ...int64) (*model.Order, error)
+	UpdateStatus(ctx context.Context, id bson.ObjectID, status model.OrderStatus, expectedVersion ...int64) (*model.Order, error)
 }
 
 type orderRepo struct {
@@ -149,19 +150,44 @@ func (r *orderRepo) GetList(ctx context.Context, filter OrderFilter) ([]model.Or
 	return orders, total, nil
 }
 
-func (r *orderRepo) Update(ctx context.Context, id bson.ObjectID, updates bson.M) (*model.Order, error) {
+func (r *orderRepo) Update(ctx context.Context, id bson.ObjectID, updates bson.M, expectedVersion ...int64) (*model.Order, error) {
 	after := options.After
 	opts := options.FindOneAndUpdate().SetReturnDocument(after)
 
+	filter := bson.M{"_id": id}
+	if len(expectedVersion) > 0 && expectedVersion[0] >= 0 {
+		expVer := expectedVersion[0]
+		filter["$or"] = []bson.M{
+			{"version": expVer},
+			{"version": bson.M{"$exists": false}},
+		}
+	}
+
+	delete(updates, "version")
+	delete(updates, "_id")
+	delete(updates, "id")
+
+	updateDoc := bson.M{
+		"$set": updates,
+		"$inc": bson.M{"version": 1},
+	}
+
 	var updated model.Order
-	err := r.coll.FindOneAndUpdate(ctx, bson.M{"_id": id}, bson.M{"$set": updates}, opts).Decode(&updated)
+	err := r.coll.FindOneAndUpdate(ctx, filter, updateDoc, opts).Decode(&updated)
 	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			count, checkErr := r.coll.CountDocuments(ctx, bson.M{"_id": id})
+			if checkErr == nil && count > 0 {
+				return nil, apperror.VersionMismatch("Đơn hàng đã được cập nhật bởi thao tác khác. Vui lòng tải lại dữ liệu mới nhất.")
+			}
+			return nil, apperror.NotFound("Không tìm thấy đơn hàng yêu cầu")
+		}
 		return nil, err
 	}
 	return &updated, nil
 }
 
-func (r *orderRepo) UpdateStatus(ctx context.Context, id bson.ObjectID, status model.OrderStatus) (*model.Order, error) {
+func (r *orderRepo) UpdateStatus(ctx context.Context, id bson.ObjectID, status model.OrderStatus, expectedVersion ...int64) (*model.Order, error) {
 	now := time.Now()
 	updates := bson.M{"status": status}
 
@@ -176,5 +202,5 @@ func (r *orderRepo) UpdateStatus(ctx context.Context, id bson.ObjectID, status m
 		updates["cancelledAt"] = now
 	}
 
-	return r.Update(ctx, id, updates)
+	return r.Update(ctx, id, updates, expectedVersion...)
 }

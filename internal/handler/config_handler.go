@@ -3,6 +3,7 @@ package handler
 import (
 	"member-shop-api/internal/model"
 	"member-shop-api/internal/repository"
+	"member-shop-api/internal/utils"
 	"member-shop-api/pkg/cache"
 	"member-shop-api/pkg/response"
 	"time"
@@ -42,10 +43,17 @@ func (h *ConfigHandler) UpdateConfig(c *gin.Context) {
 		return
 	}
 
+	expectedVersion := utils.ParseExpectedVersion(updates)
 	delete(updates, "_id")
 	delete(updates, "id")
 
-	updated, err := h.repo.UpdateConfig(c.Request.Context(), updates)
+	var updated *model.ShopConfig
+	var err error
+	if expectedVersion != nil {
+		updated, err = h.repo.UpdateConfig(c.Request.Context(), updates, *expectedVersion)
+	} else {
+		updated, err = h.repo.UpdateConfig(c.Request.Context(), updates)
+	}
 	if err != nil {
 		response.HandleError(c, err)
 		return

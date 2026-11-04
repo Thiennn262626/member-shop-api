@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"member-shop-api/internal/model"
+	"member-shop-api/pkg/apperror"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -24,8 +25,8 @@ type CustomerRepository interface {
 	GetAll(ctx context.Context) ([]model.Customer, error)
 	GetList(ctx context.Context, filter CustomerFilter) ([]model.Customer, int64, error)
 	CreateOrGet(ctx context.Context, name, phone string) (*model.Customer, error)
-	Update(ctx context.Context, id bson.ObjectID, updates bson.M) (*model.Customer, error)
-	AdjustPoints(ctx context.Context, id bson.ObjectID, delta int64) (*model.Customer, error)
+	Update(ctx context.Context, id bson.ObjectID, updates bson.M, expectedVersion ...int64) (*model.Customer, error)
+	AdjustPoints(ctx context.Context, id bson.ObjectID, delta int64, expectedVersion ...int64) (*model.Customer, error)
 	UpdateStatsAfterOrder(ctx context.Context, id bson.ObjectID, totalSpentDelta, pointsEarned, pointsRedeemed int64) (*model.Customer, error)
 	DeductPointsAtomic(ctx context.Context, id bson.ObjectID, pointsToDeduct int64) (*model.Customer, error)
 	RefundPointsAtomic(ctx context.Context, id bson.ObjectID, pointsToRefund int64) (*model.Customer, error)
@@ -155,20 +156,45 @@ func (r *customerRepo) CreateOrGet(ctx context.Context, name, phone string) (*mo
 	return &newCust, nil
 }
 
-func (r *customerRepo) Update(ctx context.Context, id bson.ObjectID, updates bson.M) (*model.Customer, error) {
+func (r *customerRepo) Update(ctx context.Context, id bson.ObjectID, updates bson.M, expectedVersion ...int64) (*model.Customer, error) {
 	updates["updatedAt"] = time.Now()
 	after := options.After
 	opts := options.FindOneAndUpdate().SetReturnDocument(after)
 
+	filter := bson.M{"_id": id}
+	if len(expectedVersion) > 0 && expectedVersion[0] >= 0 {
+		expVer := expectedVersion[0]
+		filter["$or"] = []bson.M{
+			{"version": expVer},
+			{"version": bson.M{"$exists": false}},
+		}
+	}
+
+	delete(updates, "version")
+	delete(updates, "_id")
+	delete(updates, "id")
+
+	updateDoc := bson.M{
+		"$set": updates,
+		"$inc": bson.M{"version": 1},
+	}
+
 	var cust model.Customer
-	err := r.coll.FindOneAndUpdate(ctx, bson.M{"_id": id}, bson.M{"$set": updates}, opts).Decode(&cust)
+	err := r.coll.FindOneAndUpdate(ctx, filter, updateDoc, opts).Decode(&cust)
 	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			count, checkErr := r.coll.CountDocuments(ctx, bson.M{"_id": id})
+			if checkErr == nil && count > 0 {
+				return nil, apperror.VersionMismatch("Thông tin khách hàng đã được cập nhật bởi thao tác khác. Vui lòng tải lại dữ liệu mới nhất.")
+			}
+			return nil, apperror.NotFound("Không tìm thấy thông tin khách hàng")
+		}
 		return nil, err
 	}
 	return &cust, nil
 }
 
-func (r *customerRepo) AdjustPoints(ctx context.Context, id bson.ObjectID, delta int64) (*model.Customer, error) {
+func (r *customerRepo) AdjustPoints(ctx context.Context, id bson.ObjectID, delta int64, expectedVersion ...int64) (*model.Customer, error) {
 	cust, err := r.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -189,7 +215,7 @@ func (r *customerRepo) AdjustPoints(ctx context.Context, id bson.ObjectID, delta
 		updates["redeemedPoints"] = cust.RedeemedPoints + (-delta)
 	}
 
-	return r.Update(ctx, id, updates)
+	return r.Update(ctx, id, updates, expectedVersion...)
 }
 
 func (r *customerRepo) UpdateStatsAfterOrder(ctx context.Context, id bson.ObjectID, totalSpentDelta, pointsEarned, pointsRedeemed int64) (*model.Customer, error) {

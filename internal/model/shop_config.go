@@ -34,6 +34,7 @@ type ShopConfig struct {
 	PauseReason       string         `json:"pauseReason,omitempty" bson:"pauseReason,omitempty"`
 	Bank              BankConfig     `json:"bank" bson:"bank"`
 	Delivery          DeliveryConfig `json:"delivery" bson:"delivery"`
+	Version           int64          `json:"version" bson:"version"`
 }
 
 func (s *ShopConfig) CalculateShippingFee(subTotal int64, fulfillmentType string) int64 {

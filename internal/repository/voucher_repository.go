@@ -3,7 +3,10 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"member-shop-api/internal/model"
+	"member-shop-api/pkg/apperror"
+	"net/http"
 	"strings"
 	"time"
 
@@ -20,10 +23,11 @@ type VoucherFilter struct {
 
 type VoucherRepository interface {
 	GetByCode(ctx context.Context, code string) (*model.Voucher, error)
+	GetByID(ctx context.Context, id bson.ObjectID) (*model.Voucher, error)
 	GetAll(ctx context.Context) ([]model.Voucher, error)
 	GetList(ctx context.Context, filter VoucherFilter) ([]model.Voucher, int64, error)
 	Create(ctx context.Context, v *model.Voucher) error
-	Update(ctx context.Context, id bson.ObjectID, updates bson.M) (*model.Voucher, error)
+	Update(ctx context.Context, id bson.ObjectID, updates bson.M, expectedVersion ...int64) (*model.Voucher, error)
 	Delete(ctx context.Context, id bson.ObjectID) error
 	IncrementUsedCount(ctx context.Context, id bson.ObjectID) error
 }
@@ -110,13 +114,47 @@ func (r *voucherRepo) Create(ctx context.Context, v *model.Voucher) error {
 	return nil
 }
 
-func (r *voucherRepo) Update(ctx context.Context, id bson.ObjectID, updates bson.M) (*model.Voucher, error) {
+func (r *voucherRepo) GetByID(ctx context.Context, id bson.ObjectID) (*model.Voucher, error) {
+	var v model.Voucher
+	if err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&v); err != nil {
+		return nil, err
+	}
+	return &v, nil
+}
+
+func (r *voucherRepo) Update(ctx context.Context, id bson.ObjectID, updates bson.M, expectedVersion ...int64) (*model.Voucher, error) {
+	delete(updates, "_id")
+	delete(updates, "id")
+	delete(updates, "version")
+
+	filter := bson.M{"_id": id}
+	hasVersionCheck := len(expectedVersion) > 0 && expectedVersion[0] >= 0
+	if hasVersionCheck {
+		expVer := expectedVersion[0]
+		filter["$or"] = []bson.M{
+			{"version": expVer},
+			{"version": bson.M{"$exists": false}},
+		}
+	}
+
+	updateDoc := bson.M{
+		"$set": updates,
+		"$inc": bson.M{"version": 1},
+	}
+
 	after := options.After
 	opts := options.FindOneAndUpdate().SetReturnDocument(after)
 
 	var updated model.Voucher
-	err := r.coll.FindOneAndUpdate(ctx, bson.M{"_id": id}, bson.M{"$set": updates}, opts).Decode(&updated)
+	err := r.coll.FindOneAndUpdate(ctx, filter, updateDoc, opts).Decode(&updated)
 	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			existing, checkErr := r.GetByID(ctx, id)
+			if checkErr == nil && existing != nil && hasVersionCheck {
+				return nil, apperror.VersionMismatch(fmt.Sprintf("Mã khuyến mãi '%s' đã được cập nhật bởi một thiết bị khác (phiên bản mới: %d). Hệ thống đang tải lại dữ liệu mới nhất.", existing.Code, existing.Version))
+			}
+			return nil, apperror.New(http.StatusNotFound, apperror.CodeVoucherNotFound, "Không tìm thấy mã khuyến mãi này trên hệ thống")
+		}
 		return nil, err
 	}
 	return &updated, nil

@@ -25,6 +25,7 @@ type Customer struct {
 	AvailablePoints int64         `json:"availablePoints" bson:"availablePoints"`
 	TotalSpent      int64         `json:"totalSpent" bson:"totalSpent"`
 	JoinedDate      string        `json:"joinedDate" bson:"joinedDate"`
+	Version         int64         `json:"version" bson:"version"`
 	CreatedAt       time.Time     `json:"createdAt" bson:"createdAt"`
 	UpdatedAt       time.Time     `json:"updatedAt" bson:"updatedAt"`
 }

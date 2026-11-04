@@ -56,3 +56,21 @@ func MustGetWorkingDir() string {
 	}
 	return dir
 }
+
+// ParseExpectedVersion trích xuất trường version từ payload update phục vụ Optimistic Concurrency Control (OCC)
+func ParseExpectedVersion(updates map[string]any) *int64 {
+	if v, exists := updates["version"]; exists {
+		delete(updates, "version")
+		switch val := v.(type) {
+		case float64:
+			vInt := int64(val)
+			return &vInt
+		case int64:
+			return &val
+		case int:
+			vInt := int64(val)
+			return &vInt
+		}
+	}
+	return nil
+}

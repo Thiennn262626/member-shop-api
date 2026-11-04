@@ -177,13 +177,19 @@ func (h *CustomerHandler) AdjustPoints(c *gin.Context) {
 	var req struct {
 		PointsDelta int64  `json:"pointsDelta" binding:"required"`
 		Note        string `json:"note"`
+		Version     *int64 `json:"version"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.HandleValidationError(c, err)
 		return
 	}
 
-	updated, err := h.custRepo.AdjustPoints(c.Request.Context(), id, req.PointsDelta)
+	var expectedVersion []int64
+	if req.Version != nil {
+		expectedVersion = append(expectedVersion, *req.Version)
+	}
+
+	updated, err := h.custRepo.AdjustPoints(c.Request.Context(), id, req.PointsDelta, expectedVersion...)
 	if err != nil {
 		response.HandleError(c, err)
 		return

@@ -26,6 +26,7 @@ type Voucher struct {
 	UsageLimit        int                 `json:"usageLimit,omitempty" bson:"usageLimit,omitempty"`
 	UsedCount         int                 `json:"usedCount" bson:"usedCount"`
 	IsActive          bool                `json:"isActive" bson:"isActive"`
+	Version           int64               `json:"version" bson:"version"`
 	CreatedAt         time.Time           `json:"createdAt" bson:"createdAt"`
 }
 

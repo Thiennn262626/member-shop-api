@@ -4,6 +4,7 @@ import (
 	"math"
 	"member-shop-api/internal/model"
 	"member-shop-api/internal/repository"
+	"member-shop-api/internal/utils"
 	"member-shop-api/pkg/apperror"
 	"member-shop-api/pkg/cache"
 	"member-shop-api/pkg/response"
@@ -171,10 +172,16 @@ func (h *ProductHandler) UpdateProduct(c *gin.Context) {
 		return
 	}
 
+	expectedVersion := utils.ParseExpectedVersion(updates)
 	delete(updates, "_id")
 	delete(updates, "id")
 
-	updated, err := h.repo.Update(c.Request.Context(), id, updates)
+	var updated *model.Product
+	if expectedVersion != nil {
+		updated, err = h.repo.Update(c.Request.Context(), id, updates, *expectedVersion)
+	} else {
+		updated, err = h.repo.Update(c.Request.Context(), id, updates)
+	}
 	if err != nil {
 		response.HandleError(c, err)
 		return

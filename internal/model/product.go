@@ -40,6 +40,7 @@ type Product struct {
 	Rating                 float64           `json:"rating" bson:"rating"`
 	SoldCount              int64             `json:"soldCount" bson:"soldCount"`
 	OptionGroups           []ItemOptionGroup `json:"optionGroups,omitempty" bson:"optionGroups,omitempty"`
+	Version                int64             `json:"version" bson:"version"`
 	CreatedAt              time.Time         `json:"createdAt" bson:"createdAt"`
 	UpdatedAt              time.Time         `json:"updatedAt" bson:"updatedAt"`
 }

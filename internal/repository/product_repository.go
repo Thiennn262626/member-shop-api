@@ -2,7 +2,11 @@ package repository
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"member-shop-api/internal/model"
+	"member-shop-api/pkg/apperror"
+	"net/http"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -23,7 +27,7 @@ type ProductRepository interface {
 	GetList(ctx context.Context, filter ProductFilter) ([]model.Product, int64, error)
 	GetByID(ctx context.Context, id bson.ObjectID) (*model.Product, error)
 	Create(ctx context.Context, p *model.Product) error
-	Update(ctx context.Context, id bson.ObjectID, updates bson.M) (*model.Product, error)
+	Update(ctx context.Context, id bson.ObjectID, updates bson.M, expectedVersion ...int64) (*model.Product, error)
 	Delete(ctx context.Context, id bson.ObjectID) error
 	ToggleActive(ctx context.Context, id bson.ObjectID) (*model.Product, error)
 	ToggleAllActive(ctx context.Context, isActive bool, category string) error
@@ -119,14 +123,40 @@ func (r *productRepo) Create(ctx context.Context, p *model.Product) error {
 	return nil
 }
 
-func (r *productRepo) Update(ctx context.Context, id bson.ObjectID, updates bson.M) (*model.Product, error) {
+func (r *productRepo) Update(ctx context.Context, id bson.ObjectID, updates bson.M, expectedVersion ...int64) (*model.Product, error) {
+	delete(updates, "_id")
+	delete(updates, "id")
+	delete(updates, "version")
+
+	filter := bson.M{"_id": id}
+	hasVersionCheck := len(expectedVersion) > 0 && expectedVersion[0] >= 0
+	if hasVersionCheck {
+		expVer := expectedVersion[0]
+		filter["$or"] = []bson.M{
+			{"version": expVer},
+			{"version": bson.M{"$exists": false}},
+		}
+	}
+
 	updates["updatedAt"] = time.Now()
+	updateDoc := bson.M{
+		"$set": updates,
+		"$inc": bson.M{"version": 1},
+	}
+
 	after := options.After
 	opts := options.FindOneAndUpdate().SetReturnDocument(after)
 
 	var updated model.Product
-	err := r.coll.FindOneAndUpdate(ctx, bson.M{"_id": id}, bson.M{"$set": updates}, opts).Decode(&updated)
+	err := r.coll.FindOneAndUpdate(ctx, filter, updateDoc, opts).Decode(&updated)
 	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			existing, checkErr := r.GetByID(ctx, id)
+			if checkErr == nil && existing != nil && hasVersionCheck {
+				return nil, apperror.VersionMismatch(fmt.Sprintf("Món '%s' đã được cập nhật bởi một thiết bị khác (phiên bản mới: %d). Hệ thống đang tải lại dữ liệu mới nhất.", existing.Name, existing.Version))
+			}
+			return nil, apperror.New(http.StatusNotFound, apperror.CodeProductNotFound, "Không tìm thấy sản phẩm này trên hệ thống")
+		}
 		return nil, err
 	}
 	return &updated, nil
