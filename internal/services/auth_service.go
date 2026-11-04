@@ -104,8 +104,9 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 	}
 
 	res := &dto.LoginResponse{
-		AccessToken: accessToken,
-		ExpiresIn:   s.cfg.AccessTokenExpires,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    s.cfg.AccessTokenExpires,
 		User: dto.AdminUserResponse{
 			ID:        staff.ID.Hex(),
 			Username:  staff.Username,
@@ -175,8 +176,9 @@ func (s *authService) RefreshToken(ctx context.Context, oldRefreshToken string) 
 	}
 
 	res := &dto.RefreshResponse{
-		AccessToken: newAccessToken,
-		ExpiresIn:   s.cfg.AccessTokenExpires,
+		AccessToken:  newAccessToken,
+		RefreshToken: newRefreshToken,
+		ExpiresIn:    s.cfg.AccessTokenExpires,
 	}
 
 	return res, newRefreshToken, nil

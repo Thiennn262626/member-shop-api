@@ -17,14 +17,16 @@ type AdminUserResponse struct {
 }
 
 type LoginResponse struct {
-	AccessToken string            `json:"accessToken"`
-	ExpiresIn   int               `json:"expiresIn"` // Thời gian sống tính bằng giây (ví dụ: 900s = 15m)
-	User        AdminUserResponse `json:"user"`
+	AccessToken  string            `json:"accessToken"`
+	RefreshToken string            `json:"refreshToken,omitempty"`
+	ExpiresIn    int               `json:"expiresIn"` // Thời gian sống tính bằng giây (ví dụ: 900s = 15m)
+	User         AdminUserResponse `json:"user"`
 }
 
 type RefreshResponse struct {
-	AccessToken string `json:"accessToken"`
-	ExpiresIn   int    `json:"expiresIn"`
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken,omitempty"`
+	ExpiresIn    int    `json:"expiresIn"`
 }
 
 // RefreshTokenSession lưu thông tin phiên làm việc của Refresh Token trong Redis/Cache
