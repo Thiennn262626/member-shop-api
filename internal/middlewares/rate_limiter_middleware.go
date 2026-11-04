@@ -54,8 +54,8 @@ func getRateLimiter(ip string) *rate.Limiter {
 		return client.limiter
 	}
 
-	requestSec := utils.GetIntEnv("RATE_LIMITER_REQUEST_SEC", 5)
-	brust := utils.GetIntEnv("RATE_LIMITER_REQUEST_BURST", 10)
+	requestSec := utils.GetIntEnv("RATE_LIMITER_REQUEST_SEC", 30)
+	brust := utils.GetIntEnv("RATE_LIMITER_REQUEST_BURST", 60)
 
 	limiter := rate.NewLimiter(rate.Limit(requestSec), brust)
 	newClient := &Client{limiter, time.Now()}
@@ -85,12 +85,15 @@ func RateLimiterMiddleware(rateLimterLogger *zerolog.Logger) gin.HandlerFunc {
 	})
 
 	return func(ctx *gin.Context) {
-		ip := getClientIP(ctx)
+		key := getClientIP(ctx)
+		if auth := ctx.GetHeader("Authorization"); auth != "" {
+			key = "auth:" + auth
+		}
 
-		limiter := getRateLimiter(ip)
+		limiter := getRateLimiter(key)
 
 		if !limiter.Allow() {
-			if shoudLogRateLimit(ip) {
+			if shoudLogRateLimit(key) {
 				rateLimterLogger.Warn().
 					Str("method", ctx.Request.Method).
 					Str("path", ctx.Request.URL.Path).

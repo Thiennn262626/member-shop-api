@@ -16,7 +16,7 @@ type OrderItemRequest struct {
 type CreateOrderRequest struct {
 	CustomerName             string             `json:"customerName" binding:"required"`
 	CustomerPhone            string             `json:"customerPhone" binding:"required"`
-	Items                    []OrderItemRequest `json:"items" binding:"required,min=1"`
+	Items                    []OrderItemRequest `json:"items" binding:"required,min=1,dive"`
 	Note                     string             `json:"note,omitempty"`
 	FulfillmentType          string             `json:"fulfillmentType"` // 'delivery' | 'pickup'
 	DeliveryAddress          string             `json:"deliveryAddress,omitempty"`
@@ -30,7 +30,7 @@ type CreateOrderRequest struct {
 type CreatePosOrderRequest struct {
 	CustomerName             string             `json:"customerName" binding:"required"`
 	CustomerPhone            string             `json:"customerPhone" binding:"required"`
-	Items                    []OrderItemRequest `json:"items" binding:"required,min=1"`
+	Items                    []OrderItemRequest `json:"items" binding:"required,min=1,dive"`
 	Note                     string             `json:"note,omitempty"`
 	DiscountPointsUsed       int64              `json:"discountPointsUsed,omitempty"`
 	TotalPointsRedeemedItems int64              `json:"totalPointsRedeemedItems,omitempty"`

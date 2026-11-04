@@ -77,6 +77,10 @@ func (s *orderService) CreateWebOrder(ctx context.Context, req dto.CreateOrderRe
 	var calculatedRedeemPoints int64
 
 	for _, itemReq := range req.Items {
+		if itemReq.Quantity <= 0 || itemReq.Quantity > 200 {
+			return nil, nil, apperror.New(http.StatusBadRequest, apperror.CodeBadRequest, fmt.Sprintf("Số lượng món '%s' không hợp lệ (phải từ 1 đến 200)", itemReq.ProductName))
+		}
+
 		pID, err := bson.ObjectIDFromHex(itemReq.ProductID)
 		if err != nil {
 			return nil, nil, fmt.Errorf("mã sản phẩm không hợp lệ: %s", itemReq.ProductID)
@@ -140,6 +144,10 @@ func (s *orderService) CreateWebOrder(ctx context.Context, req dto.CreateOrderRe
 	}
 
 	// 2. Tính điểm thưởng trừ tiền mặt (sau khi trừ đi điểm đã dùng để đổi món)
+	if req.DiscountPointsUsed < 0 {
+		return nil, nil, apperror.New(http.StatusBadRequest, apperror.CodeBadRequest, "Số điểm thưởng áp dụng không hợp lệ (không được âm)")
+	}
+
 	remainingPoints := customer.AvailablePoints - calculatedRedeemPoints
 	validPointsToUse := req.DiscountPointsUsed
 	if validPointsToUse > remainingPoints {
@@ -168,13 +176,17 @@ func (s *orderService) CreateWebOrder(ctx context.Context, req dto.CreateOrderRe
 		v, err := cache.CacheAside(ctx, s.cache, vKey, 10*time.Minute, func() (*model.Voucher, error) {
 			return s.voucherRepo.GetByCode(ctx, req.VoucherCode)
 		})
-		if err == nil && v != nil && v.IsActive {
-			voucherDiscount = v.CalculateDiscount(subTotal)
-			if voucherDiscount > 0 {
-				appliedCode = v.Code
-				_ = s.voucherRepo.IncrementUsedCount(ctx, v.ID)
-				cache.Invalidate(ctx, s.cache, vKey)
-			}
+		if err != nil || v == nil || !v.IsActive {
+			return nil, nil, apperror.New(http.StatusBadRequest, apperror.CodeVoucherNotFound, "Mã giảm giá không tồn tại hoặc đã hết hiệu lực")
+		}
+		if subTotal < v.MinOrderValue {
+			return nil, nil, apperror.New(http.StatusBadRequest, apperror.CodeVoucherMinSpendNotMet, fmt.Sprintf("Đơn hàng tối thiểu phải từ %dđ để áp dụng mã giảm giá này", v.MinOrderValue))
+		}
+		voucherDiscount = v.CalculateDiscount(subTotal)
+		if voucherDiscount > 0 {
+			appliedCode = v.Code
+			_ = s.voucherRepo.IncrementUsedCount(ctx, v.ID)
+			cache.Invalidate(ctx, s.cache, vKey)
 		}
 	}
 
@@ -265,6 +277,10 @@ func (s *orderService) CreatePosOrder(ctx context.Context, req dto.CreatePosOrde
 	var calculatedRedeemPoints int64
 
 	for _, itemReq := range req.Items {
+		if itemReq.Quantity <= 0 || itemReq.Quantity > 200 {
+			return nil, nil, apperror.New(http.StatusBadRequest, apperror.CodeBadRequest, fmt.Sprintf("Số lượng món '%s' không hợp lệ (phải từ 1 đến 200)", itemReq.ProductName))
+		}
+
 		pID, _ := bson.ObjectIDFromHex(itemReq.ProductID)
 		prod, err := s.productRepo.GetByID(ctx, pID)
 		realUnitPrice := itemReq.UnitPrice
@@ -309,6 +325,10 @@ func (s *orderService) CreatePosOrder(ctx context.Context, req dto.CreatePosOrde
 		})
 	}
 
+	if req.DiscountPointsUsed < 0 {
+		return nil, nil, apperror.New(http.StatusBadRequest, apperror.CodeBadRequest, "Số điểm thưởng áp dụng không hợp lệ (không được âm)")
+	}
+
 	remainingPoints := customer.AvailablePoints - calculatedRedeemPoints
 	if remainingPoints < 0 {
 		remainingPoints = 0
@@ -336,13 +356,17 @@ func (s *orderService) CreatePosOrder(ctx context.Context, req dto.CreatePosOrde
 		v, err := cache.CacheAside(ctx, s.cache, vKey, 10*time.Minute, func() (*model.Voucher, error) {
 			return s.voucherRepo.GetByCode(ctx, req.VoucherCode)
 		})
-		if err == nil && v != nil && v.IsActive {
-			voucherDiscount = v.CalculateDiscount(subTotal)
-			if voucherDiscount > 0 {
-				appliedCode = v.Code
-				_ = s.voucherRepo.IncrementUsedCount(ctx, v.ID)
-				cache.Invalidate(ctx, s.cache, vKey)
-			}
+		if err != nil || v == nil || !v.IsActive {
+			return nil, nil, apperror.New(http.StatusBadRequest, apperror.CodeVoucherNotFound, "Mã giảm giá không tồn tại hoặc đã hết hiệu lực")
+		}
+		if subTotal < v.MinOrderValue {
+			return nil, nil, apperror.New(http.StatusBadRequest, apperror.CodeVoucherMinSpendNotMet, fmt.Sprintf("Đơn hàng tối thiểu phải từ %dđ để áp dụng mã giảm giá này", v.MinOrderValue))
+		}
+		voucherDiscount = v.CalculateDiscount(subTotal)
+		if voucherDiscount > 0 {
+			appliedCode = v.Code
+			_ = s.voucherRepo.IncrementUsedCount(ctx, v.ID)
+			cache.Invalidate(ctx, s.cache, vKey)
 		}
 	}
 
