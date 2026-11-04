@@ -64,6 +64,7 @@ type Order struct {
 	PaymentStatus PaymentStatus `json:"paymentStatus" bson:"paymentStatus"`
 	PaymentMethod string        `json:"paymentMethod,omitempty" bson:"paymentMethod,omitempty"` // 'cash' | 'vietqr'
 	ShipperInfo   string        `json:"shipperInfo,omitempty" bson:"shipperInfo,omitempty"`
+	PointsRefunded bool         `json:"pointsRefunded,omitempty" bson:"pointsRefunded,omitempty"` // Tránh hoàn điểm lặp lại khi hủy đơn (SEC-06)
 
 	// Mốc thời gian các giai đoạn trực tiếp (phẳng), khớp chuẩn với giao diện Frontend
 	CreatedAt   time.Time  `json:"createdAt" bson:"createdAt"`

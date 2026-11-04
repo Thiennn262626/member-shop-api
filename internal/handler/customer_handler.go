@@ -3,6 +3,7 @@ package handler
 import (
 	"member-shop-api/internal/model"
 	"member-shop-api/internal/repository"
+	"member-shop-api/internal/utils"
 	"member-shop-api/pkg/apperror"
 	"member-shop-api/pkg/cache"
 	"member-shop-api/pkg/response"
@@ -82,7 +83,32 @@ func (h *CustomerHandler) LookupByPhone(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, result)
+	// Bảo vệ dữ liệu cá nhân (SEC-04): Mask PII trên endpoint public chống crawler/scrapers
+	maskedCust := *result.Customer
+	maskedCust.Name = utils.MaskName(result.Customer.Name)
+	maskedCust.Phone = utils.MaskPhone(result.Customer.Phone)
+
+	maskedOrders := make([]model.Order, len(result.Orders))
+	for i, o := range result.Orders {
+		maskedO := o
+		maskedO.CustomerName = utils.MaskName(o.CustomerName)
+		maskedO.CustomerPhone = utils.MaskPhone(o.CustomerPhone)
+		maskedO.DeliveryAddress = utils.MaskAddress(o.DeliveryAddress)
+		maskedOrders[i] = maskedO
+	}
+
+	maskedTxs := make([]model.PointTransaction, len(result.Transactions))
+	for i, tx := range result.Transactions {
+		maskedTx := tx
+		maskedTx.CustomerPhone = utils.MaskPhone(tx.CustomerPhone)
+		maskedTxs[i] = maskedTx
+	}
+
+	response.Success(c, &CustomerLookupResult{
+		Customer:     &maskedCust,
+		Orders:       maskedOrders,
+		Transactions: maskedTxs,
+	})
 }
 
 func (h *CustomerHandler) GetCustomers(c *gin.Context) {

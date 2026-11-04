@@ -9,6 +9,7 @@ import (
 	"member-shop-api/internal/repository"
 	"member-shop-api/pkg/apperror"
 	"member-shop-api/pkg/cache"
+	"net/http"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -70,40 +71,91 @@ func (s *orderService) CreateWebOrder(ctx context.Context, req dto.CreateOrderRe
 		return nil, nil, err
 	}
 
-	// 1. Tính toán giá các items an toàn từ backend
+	// 1. Tính toán giá các items an toàn từ backend (Bảo vệ chống Client Price Tampering)
 	var subTotal int64
 	var orderItems []model.OrderItem
+	var calculatedRedeemPoints int64
 
 	for _, itemReq := range req.Items {
 		pID, err := bson.ObjectIDFromHex(itemReq.ProductID)
 		if err != nil {
 			return nil, nil, fmt.Errorf("mã sản phẩm không hợp lệ: %s", itemReq.ProductID)
 		}
-		itemTotalPrice := itemReq.UnitPrice * int64(itemReq.Quantity)
+
+		// Xác thực trực tiếp giá gốc của sản phẩm từ Database
+		prod, err := s.productRepo.GetByID(ctx, pID)
+		if err != nil || prod == nil {
+			return nil, nil, fmt.Errorf("không tìm thấy thông tin sản phẩm: %s", itemReq.ProductName)
+		}
+		if !prod.IsActive {
+			return nil, nil, fmt.Errorf("sản phẩm '%s' hiện đang tạm ngưng mở bán", prod.Name)
+		}
+
+		// Giá cơ sở bắt buộc từ DB
+		realUnitPrice := prod.Price
+		if itemReq.UnitPrice > prod.Price {
+			toppingDelta := itemReq.UnitPrice - prod.Price
+			if toppingDelta > 0 && toppingDelta < 100000 {
+				realUnitPrice += toppingDelta
+			}
+		}
+
+		itemTotalPrice := realUnitPrice * int64(itemReq.Quantity)
+		var pointsCost int64
+
 		if itemReq.IsRedeemedWithPoints {
+			if !prod.AllowPointRedemption {
+				return nil, nil, fmt.Errorf("món '%s' không hỗ trợ đổi bằng điểm thưởng", prod.Name)
+			}
+			ptsRequired := prod.PointsRequiredToRedeem
+			if ptsRequired <= 0 {
+				ptsRequired = prod.Price / config.PointToVndRatio
+				if ptsRequired <= 0 {
+					ptsRequired = 1
+				}
+			}
+			pointsCost = ptsRequired * int64(itemReq.Quantity)
+			calculatedRedeemPoints += pointsCost
 			itemTotalPrice = 0 // Đổi món bằng điểm giá = 0đ
 		}
+
 		subTotal += itemTotalPrice
 
 		orderItems = append(orderItems, model.OrderItem{
 			ProductID:            pID,
-			ProductName:          itemReq.ProductName,
-			UnitPrice:            itemReq.UnitPrice,
+			ProductName:          prod.Name,
+			UnitPrice:            realUnitPrice,
 			Quantity:             itemReq.Quantity,
 			TotalPrice:           itemTotalPrice,
 			OptionsSummary:       itemReq.OptionsSummary,
 			ItemNote:             itemReq.ItemNote,
 			IsRedeemedWithPoints: itemReq.IsRedeemedWithPoints,
-			PointsCost:           itemReq.PointsCost,
+			PointsCost:           pointsCost,
 		})
 	}
 
-	// 2. Tính điểm thưởng trừ tiền mặt
+	// Xác thực số điểm đổi món có vượt quá điểm khả dụng của khách không
+	if calculatedRedeemPoints > customer.AvailablePoints {
+		return nil, nil, apperror.New(http.StatusBadRequest, apperror.CodeInsufficientPoints, fmt.Sprintf("Bạn cần %d điểm để đổi các món này nhưng chỉ có %d điểm khả dụng", calculatedRedeemPoints, customer.AvailablePoints))
+	}
+
+	// 2. Tính điểm thưởng trừ tiền mặt (sau khi trừ đi điểm đã dùng để đổi món)
+	remainingPoints := customer.AvailablePoints - calculatedRedeemPoints
 	validPointsToUse := req.DiscountPointsUsed
-	if validPointsToUse > customer.AvailablePoints {
-		validPointsToUse = customer.AvailablePoints
+	if validPointsToUse > remainingPoints {
+		validPointsToUse = remainingPoints
 	}
 	discountAmount := validPointsToUse * config.PointToVndRatio
+
+	// Chống Double-Spending (SEC-06): Khóa/trừ điểm Atomic ngay lập tức khi tạo đơn
+	totalPointsToDeduct := validPointsToUse + calculatedRedeemPoints
+	if totalPointsToDeduct > 0 {
+		updatedCust, err := s.custRepo.DeductPointsAtomic(ctx, customer.ID, totalPointsToDeduct)
+		if err != nil {
+			return nil, nil, apperror.New(http.StatusBadRequest, apperror.CodeInsufficientPoints, "Không đủ điểm thưởng khả dụng hoặc điểm đã được sử dụng ở đơn hàng khác")
+		}
+		customer = updatedCust
+	}
 
 	// 3. Phí vận chuyển
 	shippingFee := config.CalculateShippingFee(subTotal, req.FulfillmentType)
@@ -163,7 +215,26 @@ func (s *orderService) CreateWebOrder(ctx context.Context, req dto.CreateOrderRe
 	}
 
 	if err := s.orderRepo.Create(ctx, newOrder); err != nil {
+		// Rollback hoàn điểm nếu tạo đơn hàng thất bại
+		if totalPointsToDeduct > 0 {
+			_, _ = s.custRepo.RefundPointsAtomic(ctx, customer.ID, totalPointsToDeduct)
+		}
 		return nil, nil, err
+	}
+
+	// Ghi nhận sổ giao dịch điểm trừ thành công
+	if totalPointsToDeduct > 0 {
+		_ = s.pointTxRepo.Create(ctx, &model.PointTransaction{
+			CustomerID:    customer.ID,
+			CustomerPhone: customer.Phone,
+			Type:          model.PointTxOrder,
+			Source:        model.PointSourceRedeem,
+			OrderID:       &newOrder.ID,
+			OrderCode:     newOrder.OrderCode,
+			Points:        -totalPointsToDeduct,
+			BalanceAfter:  customer.AvailablePoints,
+			Note:          fmt.Sprintf("Sử dụng %d điểm khi đặt đơn %s", totalPointsToDeduct, newOrder.OrderCode),
+		})
 	}
 
 	// Invalidate Cache của khách hàng để cập nhật thông tin điểm mới nhất
@@ -191,11 +262,36 @@ func (s *orderService) CreatePosOrder(ctx context.Context, req dto.CreatePosOrde
 
 	var subTotal int64
 	var orderItems []model.OrderItem
+	var calculatedRedeemPoints int64
 
 	for _, itemReq := range req.Items {
 		pID, _ := bson.ObjectIDFromHex(itemReq.ProductID)
-		itemTotalPrice := itemReq.UnitPrice * int64(itemReq.Quantity)
+		prod, err := s.productRepo.GetByID(ctx, pID)
+		realUnitPrice := itemReq.UnitPrice
+		if err == nil && prod != nil {
+			realUnitPrice = prod.Price
+			if itemReq.UnitPrice > prod.Price {
+				toppingDelta := itemReq.UnitPrice - prod.Price
+				if toppingDelta > 0 && toppingDelta < 100000 {
+					realUnitPrice += toppingDelta
+				}
+			}
+		}
+
+		itemTotalPrice := realUnitPrice * int64(itemReq.Quantity)
+		var pointsCost int64
 		if itemReq.IsRedeemedWithPoints {
+			if prod != nil && prod.AllowPointRedemption {
+				ptsRequired := prod.PointsRequiredToRedeem
+				if ptsRequired <= 0 {
+					ptsRequired = prod.Price / config.PointToVndRatio
+					if ptsRequired <= 0 {
+						ptsRequired = 1
+					}
+				}
+				pointsCost = ptsRequired * int64(itemReq.Quantity)
+				calculatedRedeemPoints += pointsCost
+			}
 			itemTotalPrice = 0
 		}
 		subTotal += itemTotalPrice
@@ -203,21 +299,35 @@ func (s *orderService) CreatePosOrder(ctx context.Context, req dto.CreatePosOrde
 		orderItems = append(orderItems, model.OrderItem{
 			ProductID:            pID,
 			ProductName:          itemReq.ProductName,
-			UnitPrice:            itemReq.UnitPrice,
+			UnitPrice:            realUnitPrice,
 			Quantity:             itemReq.Quantity,
 			TotalPrice:           itemTotalPrice,
 			OptionsSummary:       itemReq.OptionsSummary,
 			ItemNote:             itemReq.ItemNote,
 			IsRedeemedWithPoints: itemReq.IsRedeemedWithPoints,
-			PointsCost:           itemReq.PointsCost,
+			PointsCost:           pointsCost,
 		})
 	}
 
+	remainingPoints := customer.AvailablePoints - calculatedRedeemPoints
+	if remainingPoints < 0 {
+		remainingPoints = 0
+	}
 	validPointsToUse := req.DiscountPointsUsed
-	if validPointsToUse > customer.AvailablePoints {
-		validPointsToUse = customer.AvailablePoints
+	if validPointsToUse > remainingPoints {
+		validPointsToUse = remainingPoints
 	}
 	discountAmount := validPointsToUse * config.PointToVndRatio
+
+	// Chống Double-Spending (SEC-06): Khóa/trừ điểm Atomic ngay lập tức khi tạo đơn POS
+	totalPointsDeducted := validPointsToUse + calculatedRedeemPoints
+	if totalPointsDeducted > 0 {
+		updatedCust, err := s.custRepo.DeductPointsAtomic(ctx, customer.ID, totalPointsDeducted)
+		if err != nil {
+			return nil, nil, apperror.New(http.StatusBadRequest, apperror.CodeInsufficientPoints, "Không đủ điểm thưởng khả dụng hoặc điểm đã được sử dụng ở đơn hàng khác")
+		}
+		customer = updatedCust
+	}
 
 	var voucherDiscount int64
 	var appliedCode string
@@ -298,31 +408,34 @@ func (s *orderService) CreatePosOrder(ctx context.Context, req dto.CreatePosOrde
 	}
 
 	if err := s.orderRepo.Create(ctx, newOrder); err != nil {
+		if totalPointsDeducted > 0 {
+			_, _ = s.custRepo.RefundPointsAtomic(ctx, customer.ID, totalPointsDeducted)
+		}
 		return nil, nil, err
+	}
+
+	// Ghi nhận sổ giao dịch điểm tạm trừ cho đơn POS
+	if totalPointsDeducted > 0 {
+		_ = s.pointTxRepo.Create(ctx, &model.PointTransaction{
+			CustomerID:    customer.ID,
+			CustomerPhone: customer.Phone,
+			Type:          model.PointTxOrder,
+			Source:        model.PointSourceRedeem,
+			OrderID:       &newOrder.ID,
+			OrderCode:     newOrder.OrderCode,
+			Points:        -totalPointsDeducted,
+			BalanceAfter:  customer.AvailablePoints,
+			Note:          fmt.Sprintf("Sử dụng %d điểm cho đơn POS %s", totalPointsDeducted, newOrder.OrderCode),
+		})
 	}
 
 	// Nếu đơn tạo ở trạng thái hoàn tất ngay tại quầy:
 	if status == model.OrderStatusCompleted {
-		totalPointsDeducted := validPointsToUse + req.TotalPointsRedeemedItems
-		updatedCust, err := s.custRepo.UpdateStatsAfterOrder(ctx, customer.ID, orderTotal, earnedPoints, totalPointsDeducted)
+		updatedCust, err := s.custRepo.AddSpentAndEarnedPoints(ctx, customer.ID, orderTotal, earnedPoints)
 		if err == nil {
 			customer = updatedCust
 		}
 
-		// Ghi nhận sổ giao dịch điểm
-		if totalPointsDeducted > 0 {
-			_ = s.pointTxRepo.Create(ctx, &model.PointTransaction{
-				CustomerID:    customer.ID,
-				CustomerPhone: customer.Phone,
-				Type:          model.PointTxOrder,
-				Source:        model.PointSourceRedeem,
-				OrderID:       &newOrder.ID,
-				OrderCode:     newOrder.OrderCode,
-				Points:        -totalPointsDeducted,
-				BalanceAfter:  customer.AvailablePoints - earnedPoints,
-				Note:          fmt.Sprintf("Tiêu %d điểm cho đơn POS %s", totalPointsDeducted, newOrder.OrderCode),
-			})
-		}
 		if earnedPoints > 0 {
 			_ = s.pointTxRepo.Create(ctx, &model.PointTransaction{
 				CustomerID:    customer.ID,
@@ -373,6 +486,7 @@ func (s *orderService) UpdateOrderStatus(ctx context.Context, orderID bson.Objec
 	}
 
 	var statusChangedToCompleted bool
+	var statusChangedToCancelled bool
 	if req.Status != nil && *req.Status != existing.Status {
 		updates["status"] = *req.Status
 		switch *req.Status {
@@ -387,6 +501,34 @@ func (s *orderService) UpdateOrderStatus(ctx context.Context, orderID bson.Objec
 			}
 		case model.OrderStatusCancelled:
 			updates["cancelledAt"] = now
+			if existing.Status != model.OrderStatusCancelled {
+				statusChangedToCancelled = true
+			}
+		}
+	}
+
+	// Xử lý hoàn điểm nếu đơn bị hủy (SEC-06)
+	customer, _ := s.custRepo.FindByID(ctx, existing.CustomerID)
+	if statusChangedToCancelled && customer != nil {
+		pointsToRefund := existing.DiscountPointsUsed + existing.TotalPointsRedeemedItems
+		if pointsToRefund > 0 && !existing.PointsRefunded {
+			updatedCust, err := s.custRepo.RefundPointsAtomic(ctx, customer.ID, pointsToRefund)
+			if err == nil {
+				customer = updatedCust
+				updates["pointsRefunded"] = true
+
+				_ = s.pointTxRepo.Create(ctx, &model.PointTransaction{
+					CustomerID:    customer.ID,
+					CustomerPhone: customer.Phone,
+					Type:          model.PointTxOrder,
+					Source:        model.PointSourceAdjust,
+					OrderID:       &existing.ID,
+					OrderCode:     existing.OrderCode,
+					Points:        pointsToRefund,
+					BalanceAfter:  customer.AvailablePoints,
+					Note:          fmt.Sprintf("Hoàn lại %d điểm do hủy đơn %s", pointsToRefund, existing.OrderCode),
+				})
+			}
 		}
 	}
 
@@ -395,29 +537,13 @@ func (s *orderService) UpdateOrderStatus(ctx context.Context, orderID bson.Objec
 		return nil, nil, err
 	}
 
-	customer, _ := s.custRepo.FindByID(ctx, updatedOrder.CustomerID)
-
 	// Nếu đơn vừa chuyển sang hoàn tất: Tích điểm & ghi nhận ca trực
 	if statusChangedToCompleted && customer != nil {
-		totalDeducted := updatedOrder.DiscountPointsUsed + updatedOrder.TotalPointsRedeemedItems
-		updatedCust, err := s.custRepo.UpdateStatsAfterOrder(ctx, customer.ID, updatedOrder.OrderTotal, updatedOrder.EarnedPoints, totalDeducted)
+		updatedCust, err := s.custRepo.AddSpentAndEarnedPoints(ctx, customer.ID, updatedOrder.OrderTotal, updatedOrder.EarnedPoints)
 		if err == nil {
 			customer = updatedCust
 		}
 
-		if totalDeducted > 0 {
-			_ = s.pointTxRepo.Create(ctx, &model.PointTransaction{
-				CustomerID:    customer.ID,
-				CustomerPhone: customer.Phone,
-				Type:          model.PointTxOrder,
-				Source:        model.PointSourceRedeem,
-				OrderID:       &updatedOrder.ID,
-				OrderCode:     updatedOrder.OrderCode,
-				Points:        -totalDeducted,
-				BalanceAfter:  customer.AvailablePoints - updatedOrder.EarnedPoints,
-				Note:          fmt.Sprintf("Tiêu %d điểm cho đơn %s", totalDeducted, updatedOrder.OrderCode),
-			})
-		}
 		if updatedOrder.EarnedPoints > 0 {
 			_ = s.pointTxRepo.Create(ctx, &model.PointTransaction{
 				CustomerID:    customer.ID,

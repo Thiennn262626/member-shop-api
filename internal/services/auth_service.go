@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"member-shop-api/internal/config"
 	"member-shop-api/internal/dto"
 	"member-shop-api/internal/model"
@@ -12,6 +13,11 @@ import (
 	"member-shop-api/pkg/logger"
 	"net/http"
 	"time"
+)
+
+const (
+	MaxLoginFailedAttempts = 5
+	LoginLockoutDuration   = 15 * time.Minute
 )
 
 type AuthService interface {
@@ -49,6 +55,21 @@ func (s *authService) GetKeyManager() *authjwt.ECDSAKeyManager {
 }
 
 func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.LoginResponse, string, error) {
+	// Kiểm tra cơ chế chống Brute-Force mã PIN (SEC-05)
+	failKey := cache.KeyAuthFailedAttemptsPrefix + req.Username
+	var failedCount int64
+	_ = s.cache.Get(ctx, failKey, &failedCount)
+	if failedCount >= MaxLoginFailedAttempts {
+		if logger.Log != nil {
+			logger.Log.Warn().Str("username", req.Username).Int64("failed_attempts", failedCount).Msg("🔒 Login blocked: Account temporarily locked due to excessive failed PIN attempts")
+		}
+		return nil, "", apperror.New(
+			http.StatusTooManyRequests,
+			apperror.CodeTooManyRequests,
+			"Tài khoản đang bị tạm khóa 15 phút do nhập sai mã PIN quá 5 lần liên tiếp. Vui lòng thử lại sau.",
+		)
+	}
+
 	staff, err := s.staffRepo.FindByUsername(ctx, req.Username)
 	if err != nil {
 		return nil, "", apperror.Internal(err, "Không thể truy vấn thông tin nhân viên")
@@ -62,8 +83,28 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 	}
 
 	if !staff.CheckPIN(req.PIN) {
-		return nil, "", apperror.New(http.StatusUnauthorized, apperror.CodeAuthInvalidCredentials, "Tên đăng nhập hoặc mã PIN không chính xác")
+		// Tăng số lần thử sai và đặt TTL 15 phút
+		attempts, _ := s.cache.Increment(ctx, failKey, 1, LoginLockoutDuration)
+		remaining := MaxLoginFailedAttempts - attempts
+		if remaining <= 0 {
+			if logger.Log != nil {
+				logger.Log.Warn().Str("username", req.Username).Msg("🔒 Account locked: Max PIN attempts reached")
+			}
+			return nil, "", apperror.New(
+				http.StatusTooManyRequests,
+				apperror.CodeTooManyRequests,
+				"Bạn đã nhập sai mã PIN 5 lần. Tài khoản bị tạm khóa 15 phút.",
+			)
+		}
+		return nil, "", apperror.New(
+			http.StatusUnauthorized,
+			apperror.CodeAuthInvalidCredentials,
+			fmt.Sprintf("Mã PIN không chính xác. Bạn còn %d lần thử trước khi tài khoản bị khóa tạm 15 phút.", remaining),
+		)
 	}
+
+	// Đăng nhập thành công -> Reset bộ đếm số lần sai về 0
+	_ = s.cache.Del(ctx, failKey)
 
 	// 1. Tạo Access Token bằng thuật toán ECDSA ES256 với thời gian ngắn (mặc định 15 phút)
 	accessTTL := time.Duration(s.cfg.AccessTokenExpires) * time.Second

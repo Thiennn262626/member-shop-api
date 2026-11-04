@@ -6,6 +6,7 @@ import (
 	"member-shop-api/internal/model"
 	"member-shop-api/internal/repository"
 	"member-shop-api/internal/services"
+	"member-shop-api/internal/utils"
 	"member-shop-api/pkg/apperror"
 	"member-shop-api/pkg/cache"
 	"member-shop-api/pkg/response"
@@ -82,7 +83,16 @@ func (h *OrderHandler) TrackOrders(c *gin.Context) {
 			response.FailWithStatus(c, http.StatusNotFound, apperror.CodeOrderNotFound, "Không tìm thấy đơn hàng với mã yêu cầu")
 			return
 		}
-		response.Success(c, []any{order})
+
+		// Bảo vệ dữ liệu cá nhân (SEC-04): Nếu không xác thực được số điện thoại đặt hàng, mask PII
+		resOrder := *order
+		if phone == "" || phone != order.CustomerPhone {
+			resOrder.CustomerName = utils.MaskName(order.CustomerName)
+			resOrder.CustomerPhone = utils.MaskPhone(order.CustomerPhone)
+			resOrder.DeliveryAddress = utils.MaskAddress(order.DeliveryAddress)
+		}
+
+		response.Success(c, []any{resOrder})
 		return
 	}
 
@@ -95,7 +105,18 @@ func (h *OrderHandler) TrackOrders(c *gin.Context) {
 		if orders == nil {
 			orders = []model.Order{}
 		}
-		response.Success(c, orders)
+
+		// Bảo vệ dữ liệu cá nhân (SEC-04): Mask PII cho danh sách đơn theo phone
+		maskedOrders := make([]model.Order, len(orders))
+		for i, o := range orders {
+			maskedO := o
+			maskedO.CustomerName = utils.MaskName(o.CustomerName)
+			maskedO.CustomerPhone = utils.MaskPhone(o.CustomerPhone)
+			maskedO.DeliveryAddress = utils.MaskAddress(o.DeliveryAddress)
+			maskedOrders[i] = maskedO
+		}
+
+		response.Success(c, maskedOrders)
 		return
 	}
 

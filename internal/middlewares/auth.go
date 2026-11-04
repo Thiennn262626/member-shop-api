@@ -25,21 +25,25 @@ func InitAuthMiddleware(km *authjwt.ECDSAKeyManager, cacheSvc cache.RedisCacheSe
 
 func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		var tokenStr string
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			response.FailWithStatus(c, http.StatusUnauthorized, apperror.CodeUnauthorized, "Yêu cầu cung cấp Authorization header để xác thực")
+		if authHeader != "" {
+			parts := strings.SplitN(authHeader, " ", 2)
+			if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
+				tokenStr = strings.TrimSpace(parts[1])
+			}
+		}
+
+		// Hỗ trợ truyền qua query parameter ?token=... chuyên dụng cho EventSource (SSE) / WebSocket
+		if tokenStr == "" {
+			tokenStr = strings.TrimSpace(c.Query("token"))
+		}
+
+		if tokenStr == "" {
+			response.FailWithStatus(c, http.StatusUnauthorized, apperror.CodeUnauthorized, "Yêu cầu cung cấp Authorization header hoặc token để xác thực")
 			c.Abort()
 			return
 		}
-
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-			response.FailWithStatus(c, http.StatusUnauthorized, apperror.CodeUnauthorized, "Định dạng token không hợp lệ (phải có tiền tố Bearer)")
-			c.Abort()
-			return
-		}
-
-		tokenStr := strings.TrimSpace(parts[1])
 
 		// 1. Xác thực bằng chữ ký ECDSA ES256
 		if authKM == nil {

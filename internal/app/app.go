@@ -51,6 +51,9 @@ func NewApplication(cfg *config.Config) (*Application, error) {
 
 	engine := gin.New()
 
+	// Vô hiệu hóa việc tin tưởng các proxy không xác định để chống IP Spoofing qua header X-Forwarded-For (SEC-05)
+	_ = engine.SetTrustedProxies(nil)
+
 	// 3. Khởi tạo Cache Service (Ưu tiên Redis, tự động fallback sang High-performance In-Memory Cache)
 	var cacheRedisService cache.RedisCacheService
 	redisClient := config.NewRedisClient()

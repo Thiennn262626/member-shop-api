@@ -29,6 +29,7 @@ const (
 	KeySessionRefreshTokenPrefix   = "auth:session:refresh:"   // auth:session:refresh:<token> -> session data
 	KeyBlacklistRefreshTokenPrefix = "auth:blacklist:refresh:" // auth:blacklist:refresh:<token> -> rotated/revoked
 	KeyBlacklistJTIPrefix          = "auth:blacklist:jti:"     // auth:blacklist:jti:<jti> -> revoked access token
+	KeyAuthFailedAttemptsPrefix    = "auth:failed_pin:"        // auth:failed_pin:<username> -> đếm số lần nhập sai PIN để khóa tạm (SEC-05)
 )
 
 // CacheAside triển khai mô hình Cache-Aside tiêu chuẩn:
