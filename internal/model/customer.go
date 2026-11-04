@@ -33,11 +33,11 @@ type Customer struct {
 // CalculateTier returns the loyalty tier based on cumulative spent amount
 func CalculateTier(totalSpent int64) CustomerTier {
 	switch {
-	case totalSpent >= 3000000:
+	case totalSpent >= 1500000:
 		return TierDiamond
-	case totalSpent >= 1200000:
+	case totalSpent >= 600000:
 		return TierGold
-	case totalSpent >= 300000:
+	case totalSpent >= 200000:
 		return TierSilver
 	default:
 		return TierMember
