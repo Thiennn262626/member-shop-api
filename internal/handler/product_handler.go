@@ -41,6 +41,10 @@ func (h *ProductHandler) GetProducts(c *gin.Context) {
 	if products == nil {
 		products = []model.Product{}
 	}
+
+	if onlyActive {
+		c.Header("Cache-Control", "public, max-age=60, stale-while-revalidate=120")
+	}
 	response.Success(c, products)
 }
 

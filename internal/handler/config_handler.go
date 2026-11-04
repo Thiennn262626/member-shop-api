@@ -29,6 +29,9 @@ func (h *ConfigHandler) GetConfig(c *gin.Context) {
 		response.HandleError(c, err)
 		return
 	}
+
+	// Tối ưu hiệu năng HTTP Cache cho cấu hình cửa hàng (5 phút browser cache + 10 phút stale-while-revalidate)
+	c.Header("Cache-Control", "public, max-age=300, stale-while-revalidate=600")
 	response.Success(c, cfg)
 }
 
