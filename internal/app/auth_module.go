@@ -9,6 +9,8 @@ import (
 	"member-shop-api/internal/routes"
 	"member-shop-api/internal/services"
 	"time"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 type AuthModule struct {
@@ -53,6 +55,10 @@ func seedDefaultAdmin(staffRepo repository.StaffRepository) {
 		}
 		_ = newAdmin.SetPIN("123456")
 		_ = staffRepo.Create(ctx, newAdmin)
+	} else if !admin.CheckPIN("123456") {
+		// Đảm bảo mật khẩu mặc định được hash đúng bcrypt nếu trước đó chưa có hoặc hash lỗi
+		_ = admin.SetPIN("123456")
+		_, _ = staffRepo.Update(ctx, admin.ID, bson.M{"pinHash": admin.PINHash})
 	}
 
 	thungan, _ := staffRepo.FindByUsername(ctx, "thungan")
@@ -67,5 +73,8 @@ func seedDefaultAdmin(staffRepo repository.StaffRepository) {
 		}
 		_ = newCashier.SetPIN("123456")
 		_ = staffRepo.Create(ctx, newCashier)
+	} else if !thungan.CheckPIN("123456") {
+		_ = thungan.SetPIN("123456")
+		_, _ = staffRepo.Update(ctx, thungan.ID, bson.M{"pinHash": thungan.PINHash})
 	}
 }
