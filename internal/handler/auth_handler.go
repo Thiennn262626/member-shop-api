@@ -27,30 +27,38 @@ func NewAuthHandler(authService services.AuthService, staffRepo repository.Staff
 
 // setRefreshTokenCookie thiết lập cookie HTTP-Only cho Refresh Token bảo mật chống XSS
 func (h *AuthHandler) setRefreshTokenCookie(c *gin.Context, token string) {
-	secure := h.cfg.AppEnv == "production"
-	c.SetSameSite(http.SameSiteLaxMode)
+	isHttps := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" || h.cfg.AppEnv == "production"
+	sameSite := http.SameSiteLaxMode
+	if isHttps {
+		sameSite = http.SameSiteNoneMode
+	}
+	c.SetSameSite(sameSite)
 	c.SetCookie(
 		"refresh_token",
 		token,
 		h.cfg.RefreshTokenExpires,
 		"/",
 		"",
-		secure,
+		isHttps,
 		true, // HttpOnly: JavaScript client không thể đọc, chống rò rỉ XSS
 	)
 }
 
 // clearRefreshTokenCookie xóa cookie Refresh Token khi đăng xuất
 func (h *AuthHandler) clearRefreshTokenCookie(c *gin.Context) {
-	secure := h.cfg.AppEnv == "production"
-	c.SetSameSite(http.SameSiteLaxMode)
+	isHttps := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" || h.cfg.AppEnv == "production"
+	sameSite := http.SameSiteLaxMode
+	if isHttps {
+		sameSite = http.SameSiteNoneMode
+	}
+	c.SetSameSite(sameSite)
 	c.SetCookie(
 		"refresh_token",
 		"",
 		-1,
 		"/",
 		"",
-		secure,
+		isHttps,
 		true,
 	)
 }
