@@ -35,7 +35,7 @@ func (r *configRepo) GetConfig(ctx context.Context) (*model.ShopConfig, error) {
 			defaultCfg := model.ShopConfig{
 				ID:                "current_config",
 				ShopName:          "Bánh Tráng Cậu Hai",
-				Tagline:           "Bánh Tráng Trộn & Ăn Vặt Nha Trang • Giá Học Sinh 15k - 25k",
+				Tagline:           "Bánh Tráng Phơi Sương Chuẩn Vị Tây Ninh • Cay Béo Xuýt Xoa • Càng Ăn Càng Cuốn",
 				Hotline:           "0334395313",
 				ZaloPhone:         "0334395313",
 				Address:           "7C Đ. Tô Hiến Thành, Nha Trang, Khánh Hòa",
